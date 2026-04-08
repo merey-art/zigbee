@@ -1,0 +1,25 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+dist/
+*.egg-info/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Docker volumes (if bind-mounted locally)
+mosquitto/data/
+mosquitto/log/
+
+# IDE
+.idea/
+.vscode/
+*.swp

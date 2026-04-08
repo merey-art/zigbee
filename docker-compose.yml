@@ -1,0 +1,104 @@
+version: "3.9"
+
+networks:
+  zigbee-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  zigbee2mqtt-data:
+  mosquitto-data:
+  mosquitto-log:
+
+services:
+
+  # ── MQTT Broker ────────────────────────────────────────────────────────────
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    networks:
+      - zigbee-net
+
+  # ── Zigbee2MQTT ────────────────────────────────────────────────────────────
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt:latest
+    container_name: zigbee2mqtt
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    environment:
+      - TZ=${TZ:-Europe/Warsaw}
+    volumes:
+      - ./zigbee2mqtt:/app/data
+      - /run/udev:/run/udev:ro
+    devices:
+      - ${ZIGBEE_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
+    ports:
+      - "8080:8080"
+    networks:
+      - zigbee-net
+
+  # ── TimescaleDB (PostgreSQL + time-series extension) ───────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-zigbee}
+      POSTGRES_USER: ${POSTGRES_USER:-zigbee}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zigbeepass}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - zigbee-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zigbee} -d ${POSTGRES_DB:-zigbee}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    container_name: backend
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-zigbee}:${POSTGRES_PASSWORD:-zigbeepass}@timescaledb:5432/${POSTGRES_DB:-zigbee}
+      MQTT_HOST: mosquitto
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    ports:
+      - "8000:8000"
+    networks:
+      - zigbee-net
+
+  # ── React Frontend ─────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8000}
+    container_name: frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - zigbee-net
