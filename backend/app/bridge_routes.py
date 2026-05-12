@@ -68,20 +68,21 @@ async def list_bridge_devices(
     return [_summarize(d) for d in devices if isinstance(d, dict)]
 
 
-@router.post("/permit_join", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/permit_join", status_code=status.HTTP_200_OK)
 async def permit_join(
     body: PermitJoinBody,
     _: Annotated[User, Depends(get_current_user)],
-) -> None:
+) -> dict[str, str]:
     await mqtt_publish_json("bridge/request/permit_join", {"time": body.time})
+    return {"status": "ok"}
 
 
-@router.patch("/device/{ieee}", status_code=status.HTTP_204_NO_CONTENT)
+@router.patch("/device/{ieee}", status_code=status.HTTP_200_OK)
 async def rename_device(
     ieee: str,
     body: RenameBody,
     _: Annotated[User, Depends(get_current_user)],
-) -> None:
+) -> dict[str, str]:
     old = await friendly_name_for_ieee(ieee)
     if old is None:
         raise HTTPException(
@@ -92,14 +93,16 @@ async def rename_device(
         "bridge/request/device/rename",
         {"from": old, "to": body.friendly_name.strip()},
     )
+    return {"status": "ok"}
 
 
-@router.delete("/device/{ieee}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/device/{ieee}", status_code=status.HTTP_200_OK)
 async def remove_device(
     ieee: str,
     _: Annotated[User, Depends(get_current_user)],
-) -> None:
+) -> dict[str, str]:
     await mqtt_publish_json(
         "bridge/request/device/remove",
         {"id": ieee, "force": False},
     )
+    return {"status": "ok"}

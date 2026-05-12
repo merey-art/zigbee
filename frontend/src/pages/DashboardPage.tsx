@@ -12,6 +12,7 @@ interface DeviceState {
 
 interface DeviceInfo {
   device_id: string;
+  friendly_name?: string | null;
   metrics: string[];
 }
 
@@ -146,15 +147,32 @@ export default function DashboardPage() {
 
       {allDeviceIds.map((deviceId) => {
         const state = devices[deviceId];
-        const knownMetrics = knownDevices.find((d) => d.device_id === deviceId)?.metrics ?? [];
+        const meta = knownDevices.find((d) => d.device_id === deviceId);
+        const knownMetrics = meta?.metrics ?? [];
         const liveMetrics = state ? Object.keys(state.data) : [];
         const allMetrics = Array.from(new Set([...liveMetrics, ...knownMetrics]));
+
+        const heading =
+          meta?.friendly_name != null && meta.friendly_name !== ""
+            ? meta.friendly_name
+            : deviceId;
+        const showIeeeSubtitle =
+          meta?.friendly_name != null &&
+          meta.friendly_name !== "" &&
+          deviceId.startsWith("0x");
 
         return (
           <section key={deviceId} style={sectionStyle}>
             <div style={deviceHeaderStyle}>
               <span>📟</span>
-              <span>{deviceId}</span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span>{heading}</span>
+                {showIeeeSubtitle ? (
+                  <span style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>
+                    {deviceId}
+                  </span>
+                ) : null}
+              </span>
             </div>
 
             <div style={cardsRowStyle}>

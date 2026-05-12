@@ -61,12 +61,12 @@ async def create_user(
     return UserRow.model_validate(user)
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{user_id}", status_code=status.HTTP_200_OK)
 async def delete_user(
     user_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current: Annotated[User, Depends(get_current_user)],
-) -> None:
+) -> dict[str, str]:
     if user_id == current.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot delete your own account")
     result = await db.execute(select(User).where(User.id == user_id))
@@ -75,18 +75,20 @@ async def delete_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     await db.execute(delete(User).where(User.id == user_id))
     await db.commit()
+    return {"status": "ok"}
 
 
-@router.patch("/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT)
+@router.patch("/{user_id}/password", status_code=status.HTTP_200_OK)
 async def patch_password(
     user_id: int,
     body: PasswordPatch,
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[User, Depends(get_current_user)],
-) -> None:
+) -> dict[str, str]:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     user.hashed_password = hash_password(body.new_password)
     await db.commit()
+    return {"status": "ok"}

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import aiomqtt
 
-from app.bridge_devices_store import set_devices_from_bridge
+from app.bridge_devices_store import canonical_device_id, set_devices_from_bridge
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import SensorReading
@@ -127,8 +127,9 @@ async def run_mqtt_listener() -> None:
                     if not isinstance(payload, dict):
                         continue
 
-                    device_id = _topic_rest(topic, base)
-                    logger.debug("MQTT %s → %s", topic, payload)
+                    first_seg = _topic_rest(topic, base).split("/")[0].strip()
+                    device_id = await canonical_device_id(first_seg)
+                    logger.debug("MQTT %s → canonical=%s %s", topic, device_id, payload)
 
                     asyncio.create_task(_persist_readings(device_id, payload))
 

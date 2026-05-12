@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth_deps import get_current_user
+from app.bridge_devices_store import aliases_for_readings, canonical_device_id, display_label_for_canonical
 from app.database import get_db
 from app.models import SensorReading, User
 
@@ -27,6 +28,7 @@ router = APIRouter()
 
 class DeviceInfo(BaseModel):
     device_id: str
+    friendly_name: str | None = None
     metrics: list[str]
     last_seen: datetime
 
@@ -66,18 +68,26 @@ async def list_devices(
     )
     rows = (await db.execute(stmt)).all()
 
-    # Aggregate metrics per device
-    devices: dict[str, DeviceInfo] = {}
-    for device_id, metric, last_seen in rows:
-        if device_id not in devices:
-            devices[device_id] = DeviceInfo(
-                device_id=device_id, metrics=[], last_seen=last_seen
+    devices_merged: dict[str, DeviceInfo] = {}
+    for raw_device_id, metric, last_seen in rows:
+        first_seg = raw_device_id.split("/")[0].strip()
+        canon = await canonical_device_id(first_seg)
+        label = await display_label_for_canonical(canon)
+        if canon not in devices_merged:
+            devices_merged[canon] = DeviceInfo(
+                device_id=canon,
+                friendly_name=label,
+                metrics=[],
+                last_seen=last_seen,
             )
-        devices[device_id].metrics.append(metric)
-        if last_seen > devices[device_id].last_seen:
-            devices[device_id].last_seen = last_seen
+        devices_merged[canon].metrics.append(metric)
+        if last_seen > devices_merged[canon].last_seen:
+            devices_merged[canon].last_seen = last_seen
 
-    return list(devices.values())
+    result = list(devices_merged.values())
+    for d in result:
+        d.metrics = sorted(set(d.metrics))
+    return result
 
 
 @router.get("/devices/{device_id}/history", response_model=HistoryResponse)
@@ -97,10 +107,13 @@ async def get_history(
     limit: Annotated[int, Query(ge=1, le=10_000)] = 1_000,
 ) -> HistoryResponse:
     """Return time-series readings for a specific device + metric."""
+    aliases = await aliases_for_readings(device_id)
+    canon = await canonical_device_id(device_id.split("/")[0].strip())
+
     stmt = (
         select(SensorReading.recorded_at, SensorReading.value)
         .where(
-            SensorReading.device_id == device_id,
+            SensorReading.device_id.in_(aliases),
             SensorReading.metric == metric,
         )
         .order_by(SensorReading.recorded_at.desc())
@@ -126,4 +139,4 @@ async def get_history(
         ReadingPoint(recorded_at=recorded_at, value=value)
         for recorded_at, value in reversed(rows)
     ]
-    return HistoryResponse(device_id=device_id, metric=metric, readings=readings)
+    return HistoryResponse(device_id=canon, metric=metric, readings=readings)
