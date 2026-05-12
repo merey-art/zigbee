@@ -21,6 +21,7 @@ from app.api import router as api_router
 from app.auth_deps import hash_password, ws_user_from_cookies
 from app.auth_routes import router as auth_router
 from app.bridge_routes import router as bridge_router
+from app.companies_routes import router as companies_router
 from app.config import settings
 from app.database import AsyncSessionLocal, Base, engine
 from app.models import HYPERTABLE_SQL
@@ -89,6 +90,7 @@ async def shutdown() -> None:
 
 # ── REST routes ────────────────────────────────────────────────────────────────
 
+app.include_router(companies_router)
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(bridge_router)

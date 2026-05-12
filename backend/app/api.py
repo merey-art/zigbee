@@ -11,15 +11,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth_deps import get_current_user
 from app.bridge_devices_store import aliases_for_readings, canonical_device_id, display_label_for_canonical
 from app.database import get_db
-from app.models import SensorReading, User
+from app.models import Company, DeviceCompany, SensorReading, User
 
 router = APIRouter()
 
@@ -29,6 +29,8 @@ router = APIRouter()
 class DeviceInfo(BaseModel):
     device_id: str
     friendly_name: str | None = None
+    company_id: int | None = None
+    company_name: str | None = None
     metrics: list[str]
     last_seen: datetime
 
@@ -44,7 +46,21 @@ class HistoryResponse(BaseModel):
     readings: list[ReadingPoint]
 
 
-# ── Endpoints ──────────────────────────────────────────────────────────────────
+class AssignCompanyBody(BaseModel):
+    company_id: int | None = None
+
+
+def _norm_assignment_key(canon: str) -> str:
+    return canon.strip().lower().replace(" ", "")
+
+
+async def _device_company_lookup(db: AsyncSession) -> dict[str, tuple[int, str]]:
+    stmt = (
+        select(DeviceCompany.device_ieee, Company.id, Company.name)
+        .join(Company, DeviceCompany.company_id == Company.id)
+    )
+    rows = (await db.execute(stmt)).all()
+    return {_norm_assignment_key(ieee): (cid, cname) for ieee, cid, cname in rows}
 
 @router.get("/health")
 async def health(_: Annotated[User, Depends(get_current_user)]) -> dict:
@@ -87,10 +103,42 @@ async def list_devices(
     result = list(devices_merged.values())
     for d in result:
         d.metrics = sorted(set(d.metrics))
+
+    lookup = await _device_company_lookup(db)
+    for d in result:
+        hit = lookup.get(_norm_assignment_key(d.device_id))
+        if hit:
+            d.company_id, d.company_name = hit
+
     return result
 
 
-@router.get("/devices/{device_id}/history", response_model=HistoryResponse)
+@router.put("/devices/{device_id}/company", status_code=status.HTTP_200_OK)
+async def assign_device_company(
+    device_id: str,
+    body: AssignCompanyBody,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+) -> dict[str, str]:
+    canon = await canonical_device_id(device_id.split("/")[0].strip())
+    key = _norm_assignment_key(canon)
+
+    if body.company_id is None:
+        await db.execute(delete(DeviceCompany).where(DeviceCompany.device_ieee == key))
+        await db.commit()
+        return {"status": "ok"}
+
+    result_co = await db.execute(select(Company).where(Company.id == body.company_id))
+    if result_co.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    existing = await db.scalar(select(DeviceCompany).where(DeviceCompany.device_ieee == key))
+    if existing is None:
+        db.add(DeviceCompany(device_ieee=key, company_id=body.company_id))
+    else:
+        existing.company_id = body.company_id
+    await db.commit()
+    return {"status": "ok"}
 async def get_history(
     device_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],

@@ -90,6 +90,9 @@ export function AppLayout() {
           <NavLink to="/devices" style={navLinkStyle} onClick={() => setMenuOpen(false)}>
             <span>📟</span> Devices
           </NavLink>
+          <NavLink to="/companies" style={navLinkStyle} onClick={() => setMenuOpen(false)}>
+            <span>🏢</span> Offices
+          </NavLink>
           <NavLink to="/users" style={navLinkStyle} onClick={() => setMenuOpen(false)}>
             <span>👥</span> Users
           </NavLink>

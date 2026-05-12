@@ -5,6 +5,7 @@ import { AppLayout } from "./components/AppLayout";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import DevicesPage from "./pages/DevicesPage";
+import CompaniesPage from "./pages/CompaniesPage";
 import UsersPage from "./pages/UsersPage";
 
 function RootRedirect() {
@@ -36,6 +37,7 @@ function AppRoutes() {
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/devices" element={<DevicesPage />} />
+          <Route path="/companies" element={<CompaniesPage />} />
           <Route path="/users" element={<UsersPage />} />
         </Route>
       </Route>

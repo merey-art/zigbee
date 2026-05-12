@@ -9,11 +9,27 @@ interface BridgeDeviceRow {
   battery?: number | null;
 }
 
+interface DashboardDeviceRow {
+  device_id: string;
+  company_id?: number | null;
+}
+
+interface CompanyOption {
+  id: number;
+  name: string;
+}
+
 const JOIN_SECONDS = 254;
+
+function normIeee(s: string): string {
+  return s.replace(/\s+/g, "").toLowerCase();
+}
 
 export default function DevicesPage() {
   const { lastMessage } = useDashboardWs();
   const [devices, setDevices] = useState<BridgeDeviceRow[]>([]);
+  const [dashboardDevices, setDashboardDevices] = useState<DashboardDeviceRow[]>([]);
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
 
@@ -35,11 +51,21 @@ export default function DevicesPage() {
     setDevices(Array.isArray(json) ? json : []);
   }, []);
 
+  const loadAssignments = useCallback(async () => {
+    const [dr, cr] = await Promise.all([apiFetch("/devices"), apiFetch("/companies")]);
+    if (dr.ok) setDashboardDevices(await dr.json());
+    if (cr.ok) setCompanies(await cr.json());
+  }, []);
+
   useEffect(() => {
     loadDevices();
-    const id = setInterval(loadDevices, 15_000);
+    loadAssignments();
+    const id = setInterval(() => {
+      loadDevices();
+      loadAssignments();
+    }, 15_000);
     return () => clearInterval(id);
-  }, [loadDevices]);
+  }, [loadDevices, loadAssignments]);
 
   useEffect(() => {
     if (!lastMessage || !isBridgeEvent(lastMessage)) return;
@@ -47,7 +73,8 @@ export default function DevicesPage() {
     const line = `${lastMessage.timestamp} — ${snippet}`;
     setEvents((prev) => [line, ...prev].slice(0, 40));
     loadDevices();
-  }, [lastMessage, loadDevices]);
+    loadAssignments();
+  }, [lastMessage, loadDevices, loadAssignments]);
 
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -100,6 +127,27 @@ export default function DevicesPage() {
     loadDevices();
   };
 
+  const companyForIeee = (ieee: string): number | "" => {
+    if (!ieee) return "";
+    const k = normIeee(ieee);
+    const hit = dashboardDevices.find((d) => normIeee(d.device_id) === k);
+    if (hit?.company_id === undefined || hit?.company_id === null) return "";
+    return hit.company_id;
+  };
+
+  const assignCompany = async (ieee: string, companyId: number | null) => {
+    const res = await apiFetch(`/devices/${encodeURIComponent(ieee)}/company`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company_id: companyId }),
+    });
+    if (!res.ok) {
+      alert("Could not update company assignment");
+      return;
+    }
+    loadAssignments();
+  };
+
   const confirmRemove = async () => {
     if (!removeIeee) return;
     const res = await apiFetch(`/bridge/device/${encodeURIComponent(removeIeee)}`, {
@@ -111,6 +159,7 @@ export default function DevicesPage() {
     }
     setRemoveIeee(null);
     loadDevices();
+    loadAssignments();
   };
 
   return (
@@ -148,6 +197,7 @@ export default function DevicesPage() {
               <th style={th}>IEEE</th>
               <th style={th}>Last seen</th>
               <th style={th}>Battery</th>
+              <th style={th}>Company</th>
               <th style={th}>Actions</th>
             </tr>
           </thead>
@@ -196,6 +246,23 @@ export default function DevicesPage() {
                   <td style={td}>{d.last_seen ? String(d.last_seen) : "—"}</td>
                   <td style={td}>
                     {d.battery !== null && d.battery !== undefined ? `${d.battery}%` : "—"}
+                  </td>
+                  <td style={td}>
+                    <select
+                      value={companyForIeee(ieee) === "" ? "" : String(companyForIeee(ieee))}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        void assignCompany(ieee, v === "" ? null : Number(v));
+                      }}
+                      style={selStyle}
+                    >
+                      <option value="">—</option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td style={td}>
                     <button type="button" style={btnDanger} onClick={() => setRemoveIeee(ieee)}>
@@ -294,6 +361,16 @@ const modalBox: React.CSSProperties = {
   width: "100%",
   border: "1px solid #334155",
 };
+const selStyle: React.CSSProperties = {
+  padding: "6px 8px",
+  borderRadius: 6,
+  border: "1px solid #475569",
+  background: "#0f172a",
+  color: "#e2e8f0",
+  fontSize: 13,
+  maxWidth: 200,
+};
+
 const btnGhost: React.CSSProperties = {
   padding: "8px 14px",
   borderRadius: 8,
