@@ -3,9 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Accept build-time env vars from docker-compose
-ARG VITE_API_URL=http://localhost:8000
-ARG VITE_WS_URL=ws://localhost:8000
+# Empty = same-origin `/api` and `/ws` (nginx proxies to backend).
+ARG VITE_API_URL=
+ARG VITE_WS_URL=
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_WS_URL=$VITE_WS_URL
 
@@ -20,7 +20,6 @@ FROM nginx:1.25-alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Simple nginx config that proxies /api and /ws to the backend
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80

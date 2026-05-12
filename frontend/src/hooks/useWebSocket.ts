@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { wsUrl } from "../api/client";
 
 export type WsStatus = "connecting" | "open" | "closed" | "error";
 
@@ -17,19 +18,17 @@ export interface SensorMessage {
 }
 
 interface UseWebSocketResult {
-  lastMessage: SensorMessage | null;
+  lastMessage: SensorMessage | Record<string, unknown> | null;
   status: WsStatus;
 }
-
-const WS_URL =
-  (import.meta as unknown as { env: Record<string, string> }).env.VITE_WS_URL ??
-  "ws://localhost:8000";
 
 const BASE_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
 
 export function useWebSocket(): UseWebSocketResult {
-  const [lastMessage, setLastMessage] = useState<SensorMessage | null>(null);
+  const [lastMessage, setLastMessage] = useState<SensorMessage | Record<string, unknown> | null>(
+    null
+  );
   const [status, setStatus] = useState<WsStatus>("connecting");
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -41,18 +40,21 @@ export function useWebSocket(): UseWebSocketResult {
     if (unmounted.current) return;
     setStatus("connecting");
 
-    const ws = new WebSocket(`${WS_URL}/ws`);
+    const ws = new WebSocket(wsUrl());
     wsRef.current = ws;
 
     ws.onopen = () => {
-      if (unmounted.current) { ws.close(); return; }
+      if (unmounted.current) {
+        ws.close();
+        return;
+      }
       setStatus("open");
-      retryDelay.current = BASE_DELAY_MS; // reset back-off on success
+      retryDelay.current = BASE_DELAY_MS;
     };
 
     ws.onmessage = (evt) => {
       try {
-        const msg: SensorMessage = JSON.parse(evt.data as string);
+        const msg = JSON.parse(evt.data as string) as SensorMessage | Record<string, unknown>;
         setLastMessage(msg);
       } catch {
         // ignore malformed frames
@@ -66,7 +68,6 @@ export function useWebSocket(): UseWebSocketResult {
     ws.onclose = () => {
       if (unmounted.current) return;
       setStatus("closed");
-      // Exponential back-off reconnect
       retryTimer.current = setTimeout(() => {
         retryDelay.current = Math.min(retryDelay.current * 2, MAX_DELAY_MS);
         connect();

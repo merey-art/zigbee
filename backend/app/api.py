@@ -13,11 +13,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth_deps import get_current_user
 from app.database import get_db
-from app.models import SensorReading
+from app.models import SensorReading, User
 
 router = APIRouter()
 
@@ -44,12 +45,15 @@ class HistoryResponse(BaseModel):
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.get("/health")
-async def health() -> dict:
+async def health(_: Annotated[User, Depends(get_current_user)]) -> dict:
     return {"status": "ok"}
 
 
 @router.get("/devices", response_model=list[DeviceInfo])
-async def list_devices(db: Annotated[AsyncSession, Depends(get_db)]) -> list[DeviceInfo]:
+async def list_devices(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+) -> list[DeviceInfo]:
     """Return all known devices with their available metrics and last-seen time."""
     stmt = (
         select(
@@ -80,6 +84,7 @@ async def list_devices(db: Annotated[AsyncSession, Depends(get_db)]) -> list[Dev
 async def get_history(
     device_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
     metric: Annotated[str, Query(description="Metric name, e.g. co2, temperature")] = "temperature",
     from_: Annotated[
         datetime | None,

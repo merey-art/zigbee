@@ -10,6 +10,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { format } from "date-fns";
+import { apiPath } from "../api/client";
 
 interface ReadingPoint {
   recorded_at: string;
@@ -26,10 +27,6 @@ interface Props {
   /** How many latest points to show */
   limit?: number;
 }
-
-const API_BASE =
-  (import.meta as unknown as { env: Record<string, string> }).env.VITE_API_URL ??
-  "http://localhost:8000";
 
 const CHART_STYLE: React.CSSProperties = {
   background: "#1e293b",
@@ -62,7 +59,8 @@ export const SensorChart: React.FC<Props> = ({
     const fetchData = async () => {
       try {
         const res = await fetch(
-          `${API_BASE}/devices/${encodeURIComponent(deviceId)}/history?metric=${metric}&limit=${limit}`
+          `${apiPath(`/devices/${encodeURIComponent(deviceId)}/history`)}?metric=${metric}&limit=${limit}`,
+          { credentials: "include" }
         );
         if (!res.ok) {
           setData([]);

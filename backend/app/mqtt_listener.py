@@ -1,5 +1,5 @@
 """
-MQTT listener — subscribes to zigbee2mqtt/# and persists sensor readings.
+MQTT listener — subscribes to `{mqtt_base_topic}/#` and persists sensor readings.
 
 Known scalar metrics extracted from Zigbee2MQTT payloads:
   temperature, humidity, co2, linkquality, battery, voltage, pressure
@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 import aiomqtt
 
+from app.bridge_devices_store import set_devices_from_bridge
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import SensorReading
@@ -32,21 +33,20 @@ TRACKED_METRICS: set[str] = {
     "pressure",
 }
 
-# Topics published by Zigbee2MQTT that carry bridge/coordinator status,
-# not sensor data — skip them.
+# Topic suffixes that are not sensor scalar updates (per-device configuration channels).
 SKIP_SUFFIXES: tuple[str, ...] = (
     "/availability",
     "/get",
     "/set",
-    "zigbee2mqtt/bridge",
 )
 
 
-def _topic_to_device_id(topic: str) -> str:
-    """Strip the base prefix and return the device friendly name."""
-    # topic format:  zigbee2mqtt/<friendly_name>[/sub-topic]
-    parts = topic.split("/", 1)
-    return parts[1] if len(parts) > 1 else topic
+def _topic_rest(topic: str, base: str) -> str:
+    """Return portion after `{base}/` (matches legacy behaviour)."""
+    prefix = f"{base}/"
+    if topic.startswith(prefix):
+        return topic[len(prefix) :]
+    return topic
 
 
 async def _persist_readings(device_id: str, payload: dict) -> None:
@@ -77,6 +77,7 @@ async def _persist_readings(device_id: str, payload: dict) -> None:
 async def run_mqtt_listener() -> None:
     """Runs forever; reconnects automatically on disconnect."""
     reconnect_delay = 5  # seconds
+    base = settings.mqtt_base_topic
     while True:
         try:
             async with aiomqtt.Client(
@@ -85,34 +86,52 @@ async def run_mqtt_listener() -> None:
                 identifier="zigbee-dashboard-backend",
             ) as client:
                 logger.info(
-                    "Connected to MQTT broker %s:%d",
+                    "Connected to MQTT broker %s:%d (topic prefix %s)",
                     settings.mqtt_host,
                     settings.mqtt_port,
+                    base,
                 )
                 reconnect_delay = 5  # reset on successful connect
-                await client.subscribe("zigbee2mqtt/#")
+                await client.subscribe(f"{base}/#")
                 async for message in client.messages:
                     topic = str(message.topic)
-
-                    # Skip non-sensor topics
-                    if any(topic.startswith(s) or topic.endswith(s) for s in SKIP_SUFFIXES):
-                        continue
 
                     try:
                         payload = json.loads(message.payload)
                     except (json.JSONDecodeError, TypeError):
                         continue
 
+                    if topic == f"{base}/bridge/devices":
+                        if isinstance(payload, list):
+                            await set_devices_from_bridge(payload)
+                        continue
+
+                    if topic == f"{base}/bridge/event":
+                        asyncio.create_task(
+                            manager.broadcast(
+                                {
+                                    "type": "bridge_event",
+                                    "payload": payload,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }
+                            )
+                        )
+                        continue
+
+                    if topic.startswith(f"{base}/bridge"):
+                        continue
+
+                    if any(topic.endswith(s) for s in SKIP_SUFFIXES):
+                        continue
+
                     if not isinstance(payload, dict):
                         continue
 
-                    device_id = _topic_to_device_id(topic)
+                    device_id = _topic_rest(topic, base)
                     logger.debug("MQTT %s → %s", topic, payload)
 
-                    # Persist to DB (fire-and-forget, don't block the listener)
                     asyncio.create_task(_persist_readings(device_id, payload))
 
-                    # Broadcast to all WebSocket clients
                     ws_payload = {
                         "device_id": device_id,
                         "topic": topic,

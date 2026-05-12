@@ -42,8 +42,10 @@ services:
       - /run/udev:/run/udev:ro
     devices:
       - ${ZIGBEE_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
-    ports:
-      - "18180:8080"
+    # No host port publish: the Zigbee2MQTT web UI listens on 8080 only inside zigbee-net
+    # (e.g. zigbee2mqtt:8080 for other containers). It must not be reachable from outside
+    # Docker; for occasional admin access, use SSH local forwarding from your machine, e.g.
+    #   ssh -L 8081:localhost:8080 user@server
     networks:
       - zigbee-net
 
@@ -68,7 +70,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  # ── FastAPI Backend (no host ports — reachable only on zigbee-net) ───────────
   backend:
     build: ./backend
     container_name: backend
@@ -82,24 +84,29 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-zigbee}:${POSTGRES_PASSWORD:-zigbeepass}@timescaledb:5432/${POSTGRES_DB:-zigbee}
       MQTT_HOST: mosquitto
       MQTT_PORT: ${MQTT_PORT:-1883}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:13000}
-    ports:
-      - "18100:8000"
+      MQTT_BASE_TOPIC: zigbee2mqtt
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://127.0.0.1}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-development-only}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123}
     networks:
       - zigbee-net
 
-  # ── React Frontend ─────────────────────────────────────────────────────────
+  # ── Web UI (nginx reverse proxy + React SPA) ──────────────────────────────
+  # Single published HTTP port: SPA at `/`, API at `/api/`, WebSocket at `/ws`.
   frontend:
     build:
       context: ./frontend
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:18100}
-        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:18100}
+        # Leave empty so the bundle uses same-origin `/api` and `/ws` behind this nginx.
+        VITE_API_URL: ""
+        VITE_WS_URL: ""
     container_name: frontend
     restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "13000:80"
+      - "${HTTP_PORT:-80}:80"
     networks:
       - zigbee-net
