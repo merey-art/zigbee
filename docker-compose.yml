@@ -17,9 +17,10 @@ services:
     image: eclipse-mosquitto:2.0
     container_name: mosquitto
     restart: unless-stopped
+    # Host 1883/9001 often busy locally; use 11883 (MQTT), 19101 (MQTT WS)
     ports:
-      - "1883:1883"
-      - "9001:9001"
+      - "11883:1883"
+      - "19101:9001"
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto-data:/mosquitto/data
@@ -42,7 +43,7 @@ services:
     devices:
       - ${ZIGBEE_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
     ports:
-      - "8080:8080"
+      - "18180:8080"
     networks:
       - zigbee-net
 
@@ -58,7 +59,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "15432:5432"
     networks:
       - zigbee-net
     healthcheck:
@@ -81,9 +82,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-zigbee}:${POSTGRES_PASSWORD:-zigbeepass}@timescaledb:5432/${POSTGRES_DB:-zigbee}
       MQTT_HOST: mosquitto
       MQTT_PORT: ${MQTT_PORT:-1883}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:13000}
     ports:
-      - "8000:8000"
+      - "18100:8000"
     networks:
       - zigbee-net
 
@@ -92,13 +93,13 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
-        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8000}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:18100}
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:18100}
     container_name: frontend
     restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "3000:80"
+      - "13000:80"
     networks:
       - zigbee-net

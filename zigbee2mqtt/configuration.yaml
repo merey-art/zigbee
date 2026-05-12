@@ -1,35 +1,17 @@
-# Zigbee2MQTT configuration
-# Docs: https://www.zigbee2mqtt.io/guide/configuration/
-
-homeassistant: false
-permit_join: true
-
+homeassistant:
+  enabled: false
 mqtt:
   base_topic: zigbee2mqtt
   server: mqtt://mosquitto:1883
-
 serial:
-  # Update to match your dongle — common values:
-  #   /dev/ttyUSB0  (CP2102 based, most SONOFF Dongle-E)
-  #   /dev/ttyACM0  (CDC-ACM based firmware)
   port: /dev/ttyUSB0
-  adapter: ezsp  # SONOFF Dongle-E uses Silicon Labs EZSP (EFR32)
-
-# Zigbee2MQTT web frontend (available at http://localhost:8080)
+  adapter: ezsp
 frontend:
+  enabled: true
   port: 8080
-
 advanced:
   log_level: info
-  # Pan ID / network key are auto-generated on first start if not specified.
-  # Once your network is running, back up the generated values here.
-  # pan_id: GENERATE
-  # network_key: GENERATE
-
-# Device friendly names — add your devices after pairing.
-# Example:
-# devices:
-#   '0x00124b0025e7a9b3':
-#     friendly_name: living_room_temp
-#   '0x00124b0012345678':
-#     friendly_name: office_co2
+version: 5
+devices:
+  '0xa4c13836a9308178':
+    friendly_name: Rhythmus 1 этаж
