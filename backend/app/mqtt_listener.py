@@ -14,24 +14,15 @@ from datetime import datetime, timezone
 
 import aiomqtt
 
+from app.alert_notifier import notify_metric_alerts
 from app.bridge_devices_store import canonical_device_id, set_devices_from_bridge
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import SensorReading
+from app.tracked_metrics import TRACKED_METRICS
 from app.websocket import manager
 
 logger = logging.getLogger(__name__)
-
-# Metrics we care about (all others are silently ignored)
-TRACKED_METRICS: set[str] = {
-    "temperature",
-    "humidity",
-    "co2",
-    "linkquality",
-    "battery",
-    "voltage",
-    "pressure",
-}
 
 # Topic suffixes that are not sensor scalar updates (per-device configuration channels).
 SKIP_SUFFIXES: tuple[str, ...] = (
@@ -51,6 +42,7 @@ def _topic_rest(topic: str, base: str) -> str:
 
 async def _persist_readings(device_id: str, payload: dict) -> None:
     readings: list[SensorReading] = []
+    committed: list[tuple[str, float]] = []
     now = datetime.now(timezone.utc)
     for metric, raw_value in payload.items():
         if metric not in TRACKED_METRICS:
@@ -67,11 +59,14 @@ async def _persist_readings(device_id: str, payload: dict) -> None:
                 recorded_at=now,
             )
         )
+        committed.append((metric, value))
     if not readings:
         return
     async with AsyncSessionLocal() as session:
         session.add_all(readings)
         await session.commit()
+    for metric, value in committed:
+        asyncio.create_task(notify_metric_alerts(device_id, metric, value))
 
 
 async def run_mqtt_listener() -> None:

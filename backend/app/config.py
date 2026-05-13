@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     admin_email: str = "admin@example.com"
     admin_password: str = "changeme123"
 
+    # Optional: BotFather token; alerts and /me/telegram/test require this.
+    telegram_bot_token: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",")]

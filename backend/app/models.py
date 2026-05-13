@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -14,6 +14,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -48,6 +49,33 @@ class DeviceCompany(Base):
         ForeignKey("companies.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+
+
+class AlertRule(Base):
+    """User-defined threshold; when crossed, a Telegram message is sent (if linked)."""
+
+    __tablename__ = "alert_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Canonical device ieee (optional); NULL = any device
+    device_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    metric: Mapped[str] = mapped_column(String(64), nullable=False)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    cooldown_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=900)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("NOW()"),
     )
 
 

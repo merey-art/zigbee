@@ -8,6 +8,7 @@ import DevicesPage from "./pages/DevicesPage";
 import CompaniesPage from "./pages/CompaniesPage";
 import UsersPage from "./pages/UsersPage";
 import LogsPage from "./pages/LogsPage";
+import AlertsPage from "./pages/AlertsPage";
 
 function RootRedirect() {
   const { user, loading } = useAuth();
@@ -41,6 +42,7 @@ function AppRoutes() {
           <Route path="/companies" element={<CompaniesPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/logs" element={<LogsPage />} />
+          <Route path="/alerts" element={<AlertsPage />} />
         </Route>
       </Route>
       <Route path="/" element={<RootRedirect />} />

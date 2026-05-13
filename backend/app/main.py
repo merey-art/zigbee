@@ -17,11 +17,13 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select, text
 
+from app.alert_routes import router as alert_router
 from app.api import router as api_router
 from app.auth_deps import hash_password, ws_user_from_cookies
 from app.auth_routes import router as auth_router
 from app.bridge_routes import router as bridge_router
 from app.companies_routes import router as companies_router
+from app.profile_routes import router as profile_router
 from app.config import settings
 from app.database import AsyncSessionLocal, Base, engine
 from app.models import HYPERTABLE_SQL
@@ -52,9 +54,12 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup() -> None:
-    # 1. Create tables
+    # 1. Create tables + additive column for existing DBs
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR(32);")
+        )
 
     # 2. Seed admin if no users
     async with AsyncSessionLocal() as session:
@@ -93,6 +98,8 @@ async def shutdown() -> None:
 app.include_router(companies_router)
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(profile_router)
+app.include_router(alert_router)
 app.include_router(bridge_router)
 app.include_router(api_router)
 
