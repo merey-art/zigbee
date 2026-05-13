@@ -27,8 +27,10 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (lastMessage === null) return;
+    const msg = lastMessage as WsMessage;
+    // Sensor telemetry is shown on the dashboard; keep only bridge/system-style frames here.
+    if (isSensorMessage(msg)) return;
     setRecentMessages((prev) => {
-      const msg = lastMessage as WsMessage;
       const next = [...prev, msg];
       return next.length > WS_LOG_CAP ? next.slice(-WS_LOG_CAP) : next;
     });

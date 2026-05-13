@@ -109,7 +109,7 @@ export default function LogsPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <WsStatusBadge status={status} />
           <span style={{ fontSize: 13, color: "#64748b" }}>
-            {recentMessages.length} events (max 500)
+            {recentMessages.length} entries (max 500, no sensor stream)
           </span>
         </div>
       </header>
@@ -132,8 +132,8 @@ export default function LogsPage() {
       </div>
 
       <p style={{ padding: "12px 32px 0", margin: 0, fontSize: 13, color: "#64748b" }}>
-        Live WebSocket stream: sensor readings and Zigbee2MQTT bridge events (same connection as the
-        rest of the app).
+        Zigbee2MQTT bridge and other non-telemetry WebSocket messages. Live sensor readings stay on
+        the dashboard.
       </p>
 
       <div style={{ padding: 24 }}>
@@ -151,7 +151,9 @@ export default function LogsPage() {
           }}
         >
           {lines.length === 0 ? (
-            <div style={{ padding: 32, color: "#475569" }}>No messages yet. Waiting for data…</div>
+            <div style={{ padding: 32, color: "#475569" }}>
+              No bridge or system messages yet. Pairing and bridge updates appear here.
+            </div>
           ) : (
             lines.map(({ i, msg, kind, kindColor, time }) => (
               <div
