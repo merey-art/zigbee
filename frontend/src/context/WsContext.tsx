@@ -1,5 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { useWebSocket, type SensorMessage, type WsStatus } from "../hooks/useWebSocket";
+import {
+  useWebSocket,
+  type SensorMessage,
+  type WsStatus,
+  type WsMessageListener,
+} from "../hooks/useWebSocket";
 
 export interface BridgeEventMessage {
   type: "bridge_event";
@@ -16,25 +21,26 @@ interface WsState {
   status: WsStatus;
   recentMessages: WsMessage[];
   clearRecentMessages: () => void;
+  subscribeMessages: (listener: WsMessageListener) => () => void;
 }
 
 const WsContext = createContext<WsState | null>(null);
 
 /** Single dashboard WebSocket shared by Dashboard and Devices pages. */
 export function WsProvider({ children }: { children: React.ReactNode }) {
-  const { lastMessage, status } = useWebSocket();
+  const { lastMessage, status, subscribeMessages } = useWebSocket();
   const [recentMessages, setRecentMessages] = useState<WsMessage[]>([]);
 
   useEffect(() => {
-    if (lastMessage === null) return;
-    const msg = lastMessage as WsMessage;
-    // Sensor telemetry is shown on the dashboard; keep only bridge/system-style frames here.
-    if (isSensorMessage(msg)) return;
-    setRecentMessages((prev) => {
-      const next = [...prev, msg];
-      return next.length > WS_LOG_CAP ? next.slice(-WS_LOG_CAP) : next;
+    return subscribeMessages((raw) => {
+      const msg = raw as WsMessage;
+      if (isSensorMessage(msg)) return;
+      setRecentMessages((prev) => {
+        const next = [...prev, msg];
+        return next.length > WS_LOG_CAP ? next.slice(-WS_LOG_CAP) : next;
+      });
     });
-  }, [lastMessage]);
+  }, [subscribeMessages]);
 
   const clearRecentMessages = useCallback(() => {
     setRecentMessages([]);
@@ -47,6 +53,7 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
         status,
         recentMessages,
         clearRecentMessages,
+        subscribeMessages,
       }}
     >
       {children}

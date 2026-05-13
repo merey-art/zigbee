@@ -145,7 +145,7 @@ function WsStatusBadge({ status }: { status: string }) {
 }
 
 export default function DashboardPage() {
-  const { lastMessage, status } = useDashboardWs();
+  const { subscribeMessages, status } = useDashboardWs();
 
   const [devices, setDevices] = useState<Record<string, DeviceState>>({});
   const [knownDevices, setKnownDevices] = useState<DeviceInfo[]>([]);
@@ -166,16 +166,18 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!lastMessage || !isSensorMessage(lastMessage)) return;
-    const msg = lastMessage as SensorMessage;
-    setDevices((prev) => ({
-      ...prev,
-      [msg.device_id]: {
-        data: { ...(prev[msg.device_id]?.data ?? {}), ...msg.data },
-        updatedAt: msg.timestamp,
-      },
-    }));
-  }, [lastMessage]);
+    return subscribeMessages((raw) => {
+      if (!isSensorMessage(raw)) return;
+      const msg = raw as SensorMessage;
+      setDevices((prev) => ({
+        ...prev,
+        [msg.device_id]: {
+          data: { ...(prev[msg.device_id]?.data ?? {}), ...msg.data },
+          updatedAt: msg.timestamp,
+        },
+      }));
+    });
+  }, [subscribeMessages]);
 
   const allDeviceIds = Array.from(
     new Set([...Object.keys(devices), ...knownDevices.map((d) => d.device_id)])

@@ -17,24 +17,36 @@ export interface SensorMessage {
   timestamp: string;
 }
 
+export type WsRawMessage = SensorMessage | Record<string, unknown>;
+
+export type WsMessageListener = (msg: WsRawMessage) => void;
+
 interface UseWebSocketResult {
-  lastMessage: SensorMessage | Record<string, unknown> | null;
+  lastMessage: WsRawMessage | null;
   status: WsStatus;
+  /** Called for every inbound frame (avoids losing updates when React batches setLastMessage). */
+  subscribeMessages: (listener: WsMessageListener) => () => void;
 }
 
 const BASE_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
 
 export function useWebSocket(): UseWebSocketResult {
-  const [lastMessage, setLastMessage] = useState<SensorMessage | Record<string, unknown> | null>(
-    null
-  );
+  const [lastMessage, setLastMessage] = useState<WsRawMessage | null>(null);
   const [status, setStatus] = useState<WsStatus>("connecting");
 
   const wsRef = useRef<WebSocket | null>(null);
+  const listenersRef = useRef(new Set<WsMessageListener>());
   const retryDelay = useRef(BASE_DELAY_MS);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmounted = useRef(false);
+
+  const subscribeMessages = useCallback((listener: WsMessageListener) => {
+    listenersRef.current.add(listener);
+    return () => {
+      listenersRef.current.delete(listener);
+    };
+  }, []);
 
   const connect = useCallback(() => {
     if (unmounted.current) return;
@@ -54,7 +66,14 @@ export function useWebSocket(): UseWebSocketResult {
 
     ws.onmessage = (evt) => {
       try {
-        const msg = JSON.parse(evt.data as string) as SensorMessage | Record<string, unknown>;
+        const msg = JSON.parse(evt.data as string) as WsRawMessage;
+        listenersRef.current.forEach((fn) => {
+          try {
+            fn(msg);
+          } catch {
+            /* subscriber bug should not kill the socket */
+          }
+        });
         setLastMessage(msg);
       } catch {
         // ignore malformed frames
@@ -85,5 +104,5 @@ export function useWebSocket(): UseWebSocketResult {
     };
   }, [connect]);
 
-  return { lastMessage, status };
+  return { lastMessage, status, subscribeMessages };
 }
