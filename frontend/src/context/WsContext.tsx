@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useWebSocket, type SensorMessage, type WsStatus } from "../hooks/useWebSocket";
 
 export interface BridgeEventMessage {
@@ -9,9 +9,13 @@ export interface BridgeEventMessage {
 
 export type WsMessage = SensorMessage | BridgeEventMessage | Record<string, unknown>;
 
+const WS_LOG_CAP = 500;
+
 interface WsState {
   lastMessage: WsMessage | null;
   status: WsStatus;
+  recentMessages: WsMessage[];
+  clearRecentMessages: () => void;
 }
 
 const WsContext = createContext<WsState | null>(null);
@@ -19,8 +23,30 @@ const WsContext = createContext<WsState | null>(null);
 /** Single dashboard WebSocket shared by Dashboard and Devices pages. */
 export function WsProvider({ children }: { children: React.ReactNode }) {
   const { lastMessage, status } = useWebSocket();
+  const [recentMessages, setRecentMessages] = useState<WsMessage[]>([]);
+
+  useEffect(() => {
+    if (lastMessage === null) return;
+    setRecentMessages((prev) => {
+      const msg = lastMessage as WsMessage;
+      const next = [...prev, msg];
+      return next.length > WS_LOG_CAP ? next.slice(-WS_LOG_CAP) : next;
+    });
+  }, [lastMessage]);
+
+  const clearRecentMessages = useCallback(() => {
+    setRecentMessages([]);
+  }, []);
+
   return (
-    <WsContext.Provider value={{ lastMessage: lastMessage as WsMessage | null, status }}>
+    <WsContext.Provider
+      value={{
+        lastMessage: lastMessage as WsMessage | null,
+        status,
+        recentMessages,
+        clearRecentMessages,
+      }}
+    >
       {children}
     </WsContext.Provider>
   );

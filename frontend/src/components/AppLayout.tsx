@@ -96,6 +96,9 @@ export function AppLayout() {
           <NavLink to="/users" style={navLinkStyle} onClick={() => setMenuOpen(false)}>
             <span>👥</span> Users
           </NavLink>
+          <NavLink to="/logs" style={navLinkStyle} onClick={() => setMenuOpen(false)}>
+            <span>📜</span> Logs
+          </NavLink>
           <div style={{ flex: 1 }} />
           <button
             type="button"
