@@ -84,11 +84,20 @@ async def list_devices(
     )
     rows = (await db.execute(stmt)).all()
 
+    first_segs = {raw_device_id.split("/")[0].strip() for raw_device_id, _, _ in rows}
+    canon_by_seg: dict[str, str] = {
+        seg: await canonical_device_id(seg) for seg in first_segs
+    }
+    unique_canons = set(canon_by_seg.values())
+    label_by_canon: dict[str, str | None] = {
+        canon: await display_label_for_canonical(canon) for canon in unique_canons
+    }
+
     devices_merged: dict[str, DeviceInfo] = {}
     for raw_device_id, metric, last_seen in rows:
         first_seg = raw_device_id.split("/")[0].strip()
-        canon = await canonical_device_id(first_seg)
-        label = await display_label_for_canonical(canon)
+        canon = canon_by_seg[first_seg]
+        label = label_by_canon[canon]
         if canon not in devices_merged:
             devices_merged[canon] = DeviceInfo(
                 device_id=canon,
