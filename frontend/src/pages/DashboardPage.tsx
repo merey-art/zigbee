@@ -16,6 +16,8 @@ interface DeviceInfo {
   company_id?: number | null;
   company_name?: string | null;
   metrics: string[];
+  latest_values?: Record<string, number>;
+  latest_recorded_at?: string | null;
 }
 
 interface CompanyRow {
@@ -72,6 +74,22 @@ function buildSections(
   }
   if (unassigned.length) sections.push({ title: "Unassigned", ids: unassigned });
   return sections;
+}
+
+/** Merge REST snapshot (fast first paint) with live WebSocket updates (WS wins on conflict). */
+function mergedDeviceState(
+  meta: DeviceInfo | undefined,
+  ws: DeviceState | undefined
+): DeviceState | undefined {
+  const rest = meta?.latest_values;
+  const hasRest = rest && Object.keys(rest).length > 0;
+  if (!hasRest && !ws) return undefined;
+  const data = { ...(hasRest ? rest : {}), ...(ws?.data ?? {}) };
+  const updatedAt =
+    ws?.updatedAt ||
+    (meta?.latest_recorded_at ? meta.latest_recorded_at : undefined) ||
+    "";
+  return { data, updatedAt };
 }
 
 const pageStyle: React.CSSProperties = {
@@ -163,6 +181,16 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      void (async () => {
+        const dr = await apiFetch("/devices");
+        if (dr.ok) setKnownDevices(await dr.json());
+      })();
+    }, 45_000);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -271,11 +299,11 @@ export default function DashboardPage() {
             </h2>
           )}
           {section.ids.map((deviceId) => {
-            const state = devices[deviceId];
             const meta = knownDevices.find((d) => d.device_id === deviceId);
+            const merged = mergedDeviceState(meta, devices[deviceId]);
             const knownMetrics = meta?.metrics ?? [];
-            const liveMetrics = state ? Object.keys(state.data) : [];
-            const allMetrics = Array.from(new Set([...liveMetrics, ...knownMetrics]));
+            const liveKeys = merged ? Object.keys(merged.data) : [];
+            const allMetrics = Array.from(new Set([...liveKeys, ...knownMetrics]));
 
             const heading =
               meta?.friendly_name != null && meta.friendly_name !== ""
@@ -310,7 +338,7 @@ export default function DashboardPage() {
                     .filter((m) => m in METRIC_CONFIG)
                     .map((metric) => {
                       const cfg = METRIC_CONFIG[metric];
-                      const value = state?.data[metric] ?? null;
+                      const value = merged?.data[metric] ?? null;
                       return (
                         <SensorCard
                           key={metric}
@@ -319,7 +347,7 @@ export default function DashboardPage() {
                           unit={cfg.unit}
                           icon={cfg.icon}
                           accent={cfg.accent}
-                          updatedAt={state?.updatedAt}
+                          updatedAt={merged?.updatedAt || undefined}
                         />
                       );
                     })}

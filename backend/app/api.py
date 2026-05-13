@@ -33,6 +33,8 @@ class DeviceInfo(BaseModel):
     company_name: str | None = None
     metrics: list[str]
     last_seen: datetime
+    latest_values: dict[str, float] = Field(default_factory=dict)
+    latest_recorded_at: datetime | None = None
 
 
 class ReadingPoint(BaseModel):
@@ -84,7 +86,30 @@ async def list_devices(
     )
     rows = (await db.execute(stmt)).all()
 
+    ranked = (
+        select(
+            SensorReading.device_id,
+            SensorReading.metric,
+            SensorReading.value,
+            SensorReading.recorded_at,
+            func.row_number()
+            .over(
+                partition_by=(SensorReading.device_id, SensorReading.metric),
+                order_by=SensorReading.recorded_at.desc(),
+            )
+            .label("rn"),
+        )
+    ).subquery()
+    latest_stmt = select(
+        ranked.c.device_id,
+        ranked.c.metric,
+        ranked.c.value,
+        ranked.c.recorded_at,
+    ).where(ranked.c.rn == 1)
+    latest_rows = (await db.execute(latest_stmt)).all()
+
     first_segs = {raw_device_id.split("/")[0].strip() for raw_device_id, _, _ in rows}
+    first_segs |= {raw_device_id.split("/")[0].strip() for raw_device_id, _, _, _ in latest_rows}
     canon_by_seg: dict[str, str] = {
         seg: await canonical_device_id(seg) for seg in first_segs
     }
@@ -109,9 +134,23 @@ async def list_devices(
         if last_seen > devices_merged[canon].last_seen:
             devices_merged[canon].last_seen = last_seen
 
+    latest_by_canon: dict[str, dict[str, tuple[float, datetime]]] = {}
+    for raw_device_id, metric, value, recorded_at in latest_rows:
+        first_seg = raw_device_id.split("/")[0].strip()
+        canon = canon_by_seg[first_seg]
+        bucket = latest_by_canon.setdefault(canon, {})
+        prev = bucket.get(metric)
+        if prev is None or recorded_at > prev[1]:
+            bucket[metric] = (float(value), recorded_at)
+
     result = list(devices_merged.values())
     for d in result:
         d.metrics = sorted(set(d.metrics))
+        bucket = latest_by_canon.get(d.device_id)
+        if bucket:
+            d.latest_values = {m: v for m, (v, _) in bucket.items()}
+            times = [t for _, t in bucket.values()]
+            d.latest_recorded_at = max(times)
 
     lookup = await _device_company_lookup(db)
     for d in result:
