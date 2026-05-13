@@ -139,6 +139,9 @@ async def assign_device_company(
         existing.company_id = body.company_id
     await db.commit()
     return {"status": "ok"}
+
+
+@router.get("/devices/{device_id}/history", response_model=HistoryResponse)
 async def get_history(
     device_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
