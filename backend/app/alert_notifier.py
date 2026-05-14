@@ -11,7 +11,7 @@ from sqlalchemy import or_, select
 from app.bridge_devices_store import display_label_for_canonical
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models import AlertRule, User
+from app.models import AlertEvent, AlertRule, User
 from app.telegram_service import send_telegram_message
 
 logger = logging.getLogger(__name__)
@@ -33,8 +33,7 @@ def _mark_fired(rule_id: int, device_id: str) -> None:
 
 
 async def notify_metric_alerts(device_id: str, metric: str, value: float) -> None:
-    if not (settings.telegram_bot_token or "").strip():
-        return
+    token = (settings.telegram_bot_token or "").strip()
 
     async with AsyncSessionLocal() as session:
         stmt = (
@@ -43,15 +42,13 @@ async def notify_metric_alerts(device_id: str, metric: str, value: float) -> Non
             .where(
                 AlertRule.enabled.is_(True),
                 AlertRule.metric == metric,
-                User.telegram_chat_id.isnot(None),
-                User.telegram_chat_id != "",
             )
             .where(or_(AlertRule.device_id.is_(None), AlertRule.device_id == device_id))
         )
         rows = (await session.execute(stmt)).all()
 
         label = await display_label_for_canonical(device_id)
-        device_label = label if label else device_id
+        device_label = (label or device_id)[:255]
 
         for rule, user in rows:
             if rule.direction == "above":
@@ -64,17 +61,37 @@ async def notify_metric_alerts(device_id: str, metric: str, value: float) -> Non
                 continue
             if not _cooldown_elapsed(rule.id, device_id, rule.cooldown_seconds):
                 continue
-            chat = (user.telegram_chat_id or "").strip()
-            if not chat:
-                continue
+
+            ev = AlertEvent(
+                user_id=user.id,
+                rule_id=rule.id,
+                device_id=device_id,
+                device_label=device_label or None,
+                metric=metric,
+                value=value,
+                threshold=rule.threshold,
+                direction=rule.direction,
+                telegram_sent=False,
+            )
+            session.add(ev)
+            await session.flush()
+
             dir_word = "выше" if rule.direction == "above" else "ниже"
             msg = (
                 f"⚠️ <b>Zigbee</b>\n"
                 f"Устройство: {device_label}\n"
                 f"{metric}: <b>{value:g}</b> ({dir_word} порога {rule.threshold:g})"
             )
-            try:
-                await send_telegram_message(chat, msg)
-                _mark_fired(rule.id, device_id)
-            except Exception as exc:
-                logger.warning("Alert rule %s Telegram failed: %s", rule.id, exc)
+
+            chat = (user.telegram_chat_id or "").strip()
+            sent = False
+            if token and chat:
+                try:
+                    await send_telegram_message(chat, msg)
+                    sent = True
+                except Exception as exc:
+                    logger.warning("Alert rule %s Telegram failed: %s", rule.id, exc)
+
+            ev.telegram_sent = sent
+            await session.commit()
+            _mark_fired(rule.id, device_id)

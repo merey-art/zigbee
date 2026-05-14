@@ -305,6 +305,7 @@ function UnifiedOfficeCard({
                 icon={cfg.icon}
                 accent={cfg.accent}
                 updatedAt={st?.updatedAt || undefined}
+                metricId={metric}
               />
             );
           })}
@@ -578,6 +579,7 @@ export default function DashboardPage() {
                             icon={cfg.icon}
                             accent={cfg.accent}
                             updatedAt={merged?.updatedAt || undefined}
+                            metricId={metric}
                           />
                         );
                       })}

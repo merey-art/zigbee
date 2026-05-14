@@ -102,6 +102,9 @@ export function AppLayout() {
           <NavLink to="/alerts" style={navLinkStyle} onClick={() => setMenuOpen(false)}>
             <span>🔔</span> Alerts
           </NavLink>
+          <NavLink to="/reports" style={navLinkStyle} onClick={() => setMenuOpen(false)}>
+            <span>📑</span> Reports
+          </NavLink>
           <div style={{ flex: 1 }} />
           <button
             type="button"

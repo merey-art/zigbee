@@ -1,4 +1,5 @@
 import React from "react";
+import { healthCardStyle, metricHealthTone } from "../util/metricHealth";
 
 interface Props {
   label: string;
@@ -8,6 +9,8 @@ interface Props {
   /** Optional colour accent for the value display */
   accent?: string;
   updatedAt?: string;
+  /** When set with numeric value, card gets green/yellow/red band (comfort thresholds). */
+  metricId?: string;
 }
 
 const CARD_STYLE: React.CSSProperties = {
@@ -61,20 +64,29 @@ export const SensorCard: React.FC<Props> = ({
   icon,
   accent = "#38bdf8",
   updatedAt,
+  metricId,
 }) => {
   const displayValue = value !== null ? value.toFixed(1) : "—";
   const timeLabel = updatedAt
     ? new Date(updatedAt).toLocaleTimeString()
     : null;
 
+  const tone = metricId ? metricHealthTone(metricId, value) : null;
+  const cardSurface: React.CSSProperties = {
+    ...CARD_STYLE,
+    ...healthCardStyle(tone),
+  };
+  const valueColor =
+    tone === "bad" ? "#f87171" : tone === "warn" ? "#fbbf24" : tone === "good" ? "#86efac" : accent;
+
   return (
-    <div style={CARD_STYLE}>
+    <div style={cardSurface}>
       <span style={LABEL_STYLE}>
         <span role="img" aria-label={label}>{icon}</span>
         {label}
       </span>
       <div>
-        <span style={VALUE_STYLE(accent)}>{displayValue}</span>
+        <span style={VALUE_STYLE(valueColor)}>{displayValue}</span>
         <span style={UNIT_STYLE}>{unit}</span>
       </div>
       {timeLabel && <span style={TIME_STYLE}>Updated {timeLabel}</span>}

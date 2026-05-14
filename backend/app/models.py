@@ -79,6 +79,41 @@ class AlertRule(Base):
     )
 
 
+class AlertEvent(Base):
+    """Log when an alert rule threshold is crossed (after cooldown)."""
+
+    __tablename__ = "alert_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    rule_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("alert_rules.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    device_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    device_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    metric: Mapped[str] = mapped_column(String(64), nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    telegram_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("NOW()"),
+    )
+
+    __table_args__ = (Index("ix_alert_events_user_time", "user_id", "created_at"),)
+
+
 class SensorReading(Base):
     """One scalar metric reading from a Zigbee sensor."""
 
