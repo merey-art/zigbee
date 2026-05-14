@@ -26,6 +26,8 @@ interface Props {
   threshold?: number;
   /** How many latest points to show */
   limit?: number;
+  /** Shown in chart header instead of raw device_id (e.g. friendly name) */
+  titleLabel?: string;
 }
 
 const CHART_STYLE: React.CSSProperties = {
@@ -51,6 +53,7 @@ export const SensorChart: React.FC<Props> = ({
   color = "#38bdf8",
   threshold,
   limit = 200,
+  titleLabel,
 }) => {
   const [data, setData] = useState<ReadingPoint[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +82,8 @@ export const SensorChart: React.FC<Props> = ({
     return () => clearInterval(id);
   }, [deviceId, metric, limit]);
 
+  const headerLabel = (titleLabel ?? deviceId).trim() || deviceId;
+
   const formatted = data.map((d) => ({
     time: format(new Date(d.recorded_at), "HH:mm"),
     value: d.value,
@@ -87,7 +92,7 @@ export const SensorChart: React.FC<Props> = ({
   return (
     <div style={CHART_STYLE}>
       <p style={TITLE_STYLE}>
-        {deviceId} — {metric} ({unit})
+        {headerLabel} — {metric} ({unit})
       </p>
       {error ? (
         <p style={{ color: "#f87171" }}>{error}</p>

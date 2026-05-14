@@ -187,6 +187,150 @@ const devicePanelStyle: React.CSSProperties = {
   minWidth: 0,
 };
 
+function displayDeviceLabel(meta: DeviceInfo | undefined, deviceId: string): string {
+  const n = meta?.friendly_name?.trim();
+  return n && n.length > 0 ? n : deviceId;
+}
+
+function metricSetForDevice(
+  deviceId: string,
+  known: DeviceInfo[],
+  devices: Record<string, DeviceState>
+): Set<string> {
+  const meta = known.find((d) => d.device_id === deviceId);
+  const m = mergedDeviceState(meta, devices[deviceId]);
+  return new Set([...(meta?.metrics ?? []), ...Object.keys(m?.data ?? {})]);
+}
+
+const unifiedWrapStyle: React.CSSProperties = {
+  padding: "16px 32px 32px",
+  paddingLeft: "max(32px, 56px)",
+  maxWidth: 1280,
+  margin: "0 auto",
+};
+
+function UnifiedOfficeCard({
+  companyName,
+  peerIds,
+  knownDevices,
+  devices,
+}: {
+  companyName: string;
+  peerIds: string[];
+  knownDevices: DeviceInfo[];
+  devices: Record<string, DeviceState>;
+}) {
+  const dm = (id: string) => knownDevices.find((d) => d.device_id === id);
+  const merged = (id: string) => mergedDeviceState(dm(id), devices[id]);
+  const label = (id: string) => displayDeviceLabel(dm(id), id);
+  const mset = (id: string) => metricSetForDevice(id, knownDevices, devices);
+
+  const co2Id = peerIds.find((id) => mset(id).has("co2")) ?? null;
+  const climateId =
+    peerIds.find((id) => mset(id).has("temperature") && !mset(id).has("co2")) ?? null;
+  const tempHumId = climateId ?? co2Id ?? peerIds[0] ?? null;
+
+  type CardSpec = { metric: keyof typeof METRIC_CONFIG; sourceId: string };
+  const cards: CardSpec[] = [];
+  if (co2Id && mset(co2Id).has("co2")) cards.push({ metric: "co2", sourceId: co2Id });
+  if (tempHumId && mset(tempHumId).has("temperature"))
+    cards.push({ metric: "temperature", sourceId: tempHumId });
+  if (tempHumId && mset(tempHumId).has("humidity")) cards.push({ metric: "humidity", sourceId: tempHumId });
+  if (tempHumId && mset(tempHumId).has("battery")) cards.push({ metric: "battery", sourceId: tempHumId });
+  if (tempHumId && mset(tempHumId).has("linkquality")) {
+    cards.push({ metric: "linkquality", sourceId: tempHumId });
+  } else if (co2Id && mset(co2Id).has("linkquality")) {
+    cards.push({ metric: "linkquality", sourceId: co2Id });
+  }
+
+  const chartBlocks: { metric: keyof typeof METRIC_CONFIG; sourceId: string }[] = [];
+  if (co2Id && mset(co2Id).has("co2")) chartBlocks.push({ metric: "co2", sourceId: co2Id });
+  if (tempHumId && mset(tempHumId).has("temperature"))
+    chartBlocks.push({ metric: "temperature", sourceId: tempHumId });
+  if (tempHumId && mset(tempHumId).has("humidity"))
+    chartBlocks.push({ metric: "humidity", sourceId: tempHumId });
+
+  return (
+    <div style={unifiedWrapStyle}>
+      <section
+        style={{
+          ...devicePanelStyle,
+          padding: "24px 24px 16px",
+          maxWidth: "100%",
+        }}
+      >
+        <div style={{ ...deviceHeaderStyle, marginBottom: 8 }}>
+          <span>🏢</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 18, color: "#f1f5f9", fontWeight: 700 }}>{companyName}</span>
+            <span style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>
+              {peerIds.length} sensor{peerIds.length === 1 ? "" : "s"}
+              {co2Id ? (
+                <>
+                  {" "}
+                  · CO₂: {label(co2Id)}
+                </>
+              ) : null}
+              {climateId ? (
+                <>
+                  {" "}
+                  · Temp / humidity: {label(climateId)}
+                </>
+              ) : tempHumId && !co2Id ? (
+                <>
+                  {" "}
+                  · {label(tempHumId)}
+                </>
+              ) : co2Id && tempHumId === co2Id && mset(co2Id).has("temperature") ? (
+                <>
+                  {" "}
+                  · Temp / humidity: {label(co2Id)}
+                </>
+              ) : null}
+            </span>
+          </div>
+        </div>
+
+        <div style={cardsRowStyle}>
+          {cards.map(({ metric, sourceId }) => {
+            const cfg = METRIC_CONFIG[metric];
+            const st = merged(sourceId);
+            const value = st?.data[metric] ?? null;
+            return (
+              <SensorCard
+                key={`${metric}-${sourceId}`}
+                label={cfg.label}
+                value={value}
+                unit={cfg.unit}
+                icon={cfg.icon}
+                accent={cfg.accent}
+                updatedAt={st?.updatedAt || undefined}
+              />
+            );
+          })}
+        </div>
+
+        <div style={{ ...chartsGridStyle, marginTop: 8 }}>
+          {chartBlocks.map(({ metric, sourceId }) => {
+            const cfg = METRIC_CONFIG[metric];
+            return (
+              <SensorChart
+                key={`${metric}-${sourceId}`}
+                deviceId={sourceId}
+                metric={metric}
+                unit={cfg.unit}
+                color={cfg.accent}
+                threshold={cfg.threshold}
+                titleLabel={label(sourceId)}
+              />
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function WsStatusBadge({ status }: { status: string }) {
   const color =
     status === "open" ? "#4ade80" : status === "connecting" ? "#facc15" : "#f87171";
@@ -326,7 +470,26 @@ export default function DashboardPage() {
           </div>
         )}
 
-      {sections.map((section) => (
+      {sections.map((section) => {
+        const companyName =
+          filterCompanyId !== "all"
+            ? companies.find((c) => c.id === filterCompanyId)?.name ?? "Office"
+            : "";
+
+        if (filterCompanyId !== "all" && section.ids.length > 0) {
+          return (
+            <React.Fragment key={`company-${filterCompanyId}`}>
+              <UnifiedOfficeCard
+                companyName={companyName}
+                peerIds={section.ids}
+                knownDevices={knownDevices}
+                devices={devices}
+              />
+            </React.Fragment>
+          );
+        }
+
+        return (
         <React.Fragment key={section.title || "__filtered__"}>
           {filterCompanyId === "all" && section.title !== "" && section.ids.length > 0 && (
             <div
@@ -431,6 +594,7 @@ export default function DashboardPage() {
                           unit={cfg.unit}
                           color={cfg.accent}
                           threshold={cfg.threshold}
+                          titleLabel={displayDeviceLabel(meta, deviceId)}
                         />
                       );
                     })}
@@ -440,7 +604,8 @@ export default function DashboardPage() {
             })}
           </div>
         </React.Fragment>
-      ))}
+        );
+      })}
     </div>
   );
 }
