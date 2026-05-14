@@ -38,6 +38,34 @@ const METRIC_CONFIG: Record<
 
 const CHART_METRICS = ["temperature", "humidity", "co2"];
 
+/**
+ * In one office, a CO₂ node often also reports temp/humidity. If another device in the same
+ * section has temperature but not CO₂, treat it as the primary temp/humidity source and avoid
+ * duplicating those charts on the CO₂ hardware (cards still show live values from each node).
+ */
+function chartMetricsForDevice(
+  deviceId: string,
+  allMetrics: string[],
+  sectionDeviceIds: string[],
+  known: DeviceInfo[]
+): string[] {
+  const base = CHART_METRICS.filter((m) => allMetrics.includes(m));
+  const self = known.find((k) => k.device_id === deviceId);
+  if (!self?.metrics?.length) return base;
+
+  const hasDedicatedTempPeer = sectionDeviceIds.some((oid) => {
+    if (oid === deviceId) return false;
+    const om = known.find((k) => k.device_id === oid);
+    if (!om?.metrics?.length) return false;
+    return om.metrics.includes("temperature") && !om.metrics.includes("co2");
+  });
+
+  if (self.metrics.includes("co2") && hasDedicatedTempPeer) {
+    return base.filter((m) => m !== "temperature" && m !== "humidity");
+  }
+  return base;
+}
+
 function buildSections(
   allIds: string[],
   known: DeviceInfo[],
@@ -138,8 +166,25 @@ const cardsRowStyle: React.CSSProperties = {
 
 const chartsGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 380px), 1fr))",
   gap: 20,
+};
+
+const officeGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 480px), 1fr))",
+  gap: 20,
+  padding: "8px 32px 24px",
+  paddingLeft: "max(32px, 56px)",
+  alignItems: "start",
+};
+
+const devicePanelStyle: React.CSSProperties = {
+  background: "#0f172a",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: "20px 20px 8px",
+  minWidth: 0,
 };
 
 function WsStatusBadge({ status }: { status: string }) {
@@ -284,93 +329,116 @@ export default function DashboardPage() {
       {sections.map((section) => (
         <React.Fragment key={section.title || "__filtered__"}>
           {filterCompanyId === "all" && section.title !== "" && section.ids.length > 0 && (
-            <h2
+            <div
               style={{
                 margin: "24px 32px 0",
                 paddingLeft: "max(0px, 24px)",
-                fontSize: 15,
-                fontWeight: 700,
-                color: "#64748b",
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
+                display: "flex",
+                alignItems: "baseline",
+                gap: 12,
+                flexWrap: "wrap",
               }}
             >
-              {section.title}
-            </h2>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  color: "#64748b",
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                }}
+              >
+                {section.title}
+              </h2>
+              {section.ids.length > 1 ? (
+                <span style={{ fontSize: 12, color: "#475569" }}>
+                  {section.ids.length} sensors
+                </span>
+              ) : null}
+            </div>
           )}
-          {section.ids.map((deviceId) => {
-            const meta = knownDevices.find((d) => d.device_id === deviceId);
-            const merged = mergedDeviceState(meta, devices[deviceId]);
-            const knownMetrics = meta?.metrics ?? [];
-            const liveKeys = merged ? Object.keys(merged.data) : [];
-            const allMetrics = Array.from(new Set([...liveKeys, ...knownMetrics]));
+          <div style={officeGridStyle}>
+            {section.ids.map((deviceId) => {
+              const meta = knownDevices.find((d) => d.device_id === deviceId);
+              const merged = mergedDeviceState(meta, devices[deviceId]);
+              const knownMetrics = meta?.metrics ?? [];
+              const liveKeys = merged ? Object.keys(merged.data) : [];
+              const allMetrics = Array.from(new Set([...liveKeys, ...knownMetrics]));
+              const chartsToShow = chartMetricsForDevice(
+                deviceId,
+                allMetrics,
+                section.ids,
+                knownDevices
+              );
 
-            const heading =
-              meta?.friendly_name != null && meta.friendly_name !== ""
-                ? meta.friendly_name
-                : deviceId;
-            const showIeeeSubtitle =
-              meta?.friendly_name != null &&
-              meta.friendly_name !== "" &&
-              deviceId.startsWith("0x");
+              const heading =
+                meta?.friendly_name != null && meta.friendly_name !== ""
+                  ? meta.friendly_name
+                  : deviceId;
+              const showIeeeSubtitle =
+                meta?.friendly_name != null &&
+                meta.friendly_name !== "" &&
+                deviceId.startsWith("0x");
 
-            return (
-              <section key={deviceId} style={sectionStyle}>
-                <div style={deviceHeaderStyle}>
-                  <span>📟</span>
-                  <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span>{heading}</span>
-                    {showIeeeSubtitle ? (
-                      <span style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>
-                        {deviceId}
-                      </span>
-                    ) : null}
-                    {meta?.company_name ? (
-                      <span style={{ fontSize: 12, color: "#475569", fontWeight: 500 }}>
-                        {meta.company_name}
-                      </span>
-                    ) : null}
-                  </span>
-                </div>
+              return (
+                <section key={deviceId} style={{ ...sectionStyle, ...devicePanelStyle, padding: 20 }}>
+                  <div style={deviceHeaderStyle}>
+                    <span>📟</span>
+                    <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span>{heading}</span>
+                      {showIeeeSubtitle ? (
+                        <span style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>
+                          {deviceId}
+                        </span>
+                      ) : null}
+                      {meta?.company_name ? (
+                        <span style={{ fontSize: 12, color: "#475569", fontWeight: 500 }}>
+                          {meta.company_name}
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
 
-                <div style={cardsRowStyle}>
-                  {allMetrics
-                    .filter((m) => m in METRIC_CONFIG)
-                    .map((metric) => {
+                  <div style={cardsRowStyle}>
+                    {allMetrics
+                      .filter((m) => m in METRIC_CONFIG)
+                      .map((metric) => {
+                        const cfg = METRIC_CONFIG[metric];
+                        const value = merged?.data[metric] ?? null;
+                        return (
+                          <SensorCard
+                            key={metric}
+                            label={cfg.label}
+                            value={value}
+                            unit={cfg.unit}
+                            icon={cfg.icon}
+                            accent={cfg.accent}
+                            updatedAt={merged?.updatedAt || undefined}
+                          />
+                        );
+                      })}
+                  </div>
+
+                  <div style={chartsGridStyle}>
+                    {chartsToShow.map((metric) => {
                       const cfg = METRIC_CONFIG[metric];
-                      const value = merged?.data[metric] ?? null;
                       return (
-                        <SensorCard
+                        <SensorChart
                           key={metric}
-                          label={cfg.label}
-                          value={value}
+                          deviceId={deviceId}
+                          metric={metric}
                           unit={cfg.unit}
-                          icon={cfg.icon}
-                          accent={cfg.accent}
-                          updatedAt={merged?.updatedAt || undefined}
+                          color={cfg.accent}
+                          threshold={cfg.threshold}
                         />
                       );
                     })}
-                </div>
-
-                <div style={chartsGridStyle}>
-                  {CHART_METRICS.filter((m) => allMetrics.includes(m)).map((metric) => {
-                    const cfg = METRIC_CONFIG[metric];
-                    return (
-                      <SensorChart
-                        key={metric}
-                        deviceId={deviceId}
-                        metric={metric}
-                        unit={cfg.unit}
-                        color={cfg.accent}
-                        threshold={cfg.threshold}
-                      />
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
         </React.Fragment>
       ))}
     </div>
