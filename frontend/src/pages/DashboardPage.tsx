@@ -4,6 +4,7 @@ import { apiFetch } from "../api/client";
 import { useDashboardWs, isSensorMessage } from "../context/WsContext";
 import { FLOORS } from "../data/floors";
 import type { SensorMessage } from "../hooks/useWebSocket";
+import { SensorChart } from "../components/SensorChart";
 
 // ── Design tokens ────────────────────────────────────────────────
 const C = {
@@ -126,16 +127,33 @@ function CompanyCard({ name, devices, liveReadings }: {
     return d.latest_values?.[metric] ?? null;
   };
 
-  const co2Vals = devices
+  // Split devices by type: CO2 devices vs temperature devices
+  // A device is a "CO2 device" if it reports CO2 (live or latest).
+  // Temperature/humidity are taken only from non-CO2 devices to avoid mixing.
+  const co2Devices = devices.filter(d =>
+    (liveReadings[d.device_id]?.data["co2"] !== undefined) ||
+    (d.latest_values?.["co2"] !== undefined) ||
+    d.metrics?.includes("co2")
+  );
+  const tempDevices = devices.filter(d => !co2Devices.includes(d));
+
+  const co2Vals = co2Devices
     .map(d => getValue(d, "co2"))
     .filter((v): v is number => v !== null);
   const avgCo2 = co2Vals.length ? Math.round(co2Vals.reduce((a, b) => a + b, 0) / co2Vals.length) : null;
   const co2State = avgCo2 == null ? C.dim : avgCo2 > 1000 ? C.danger : avgCo2 > 800 ? C.warn : C.ok;
 
-  const tempVals = devices
+  // Temperature and humidity — from temp devices only
+  const tempSource = tempDevices.length > 0 ? tempDevices : devices;
+  const tempVals = tempSource
     .map(d => getValue(d, "temperature"))
     .filter((v): v is number => v !== null);
   const avgTemp = tempVals.length ? (tempVals.reduce((a, b) => a + b, 0) / tempVals.length).toFixed(1) : null;
+
+  const humVals = tempSource
+    .map(d => getValue(d, "humidity"))
+    .filter((v): v is number => v !== null);
+  const avgHum = humVals.length ? Math.round(humVals.reduce((a, b) => a + b, 0) / humVals.length) : null;
 
   const online = devices.filter(d => {
     const r = liveReadings[d.device_id];
@@ -160,8 +178,31 @@ function CompanyCard({ name, devices, liveReadings }: {
       <div style={{ display: "flex", gap: 14, marginBottom: avgCo2 !== null ? 14 : 0 }}>
         <MiniStat label={t("dashboard.floors.sensors")} value={devices.length} />
         <MiniStat label={t("dashboard.floors.online")} value={online} accent={online === devices.length ? C.ok : online > 0 ? C.warn : C.danger} />
-        {avgTemp && <MiniStat label="Temp" value={`${avgTemp}°`} accent={C.orange} />}
+        {avgTemp !== null && <MiniStat label="Темп." value={`${avgTemp}°`} accent={C.orange} />}
+        {avgHum !== null && <MiniStat label="Влажн." value={`${avgHum}%`} accent={C.accent} />}
       </div>
+
+      {/* Device source labels */}
+      {(co2Devices.length > 0 || tempDevices.length > 0) && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+          {co2Devices.map(d => (
+            <span key={d.device_id} style={{
+              fontSize: 10, color: "#334155", background: "#1e3a3a",
+              borderRadius: 4, padding: "1px 6px", fontFamily: "ui-monospace, monospace",
+            }}>
+              CO₂ · {d.friendly_name || d.device_id}
+            </span>
+          ))}
+          {tempDevices.map(d => (
+            <span key={d.device_id} style={{
+              fontSize: 10, color: "#334155", background: "#1e2a3a",
+              borderRadius: 4, padding: "1px 6px", fontFamily: "ui-monospace, monospace",
+            }}>
+              T/H · {d.friendly_name || d.device_id}
+            </span>
+          ))}
+        </div>
+      )}
 
       {avgCo2 !== null && (
         <div>
@@ -728,6 +769,86 @@ export default function DashboardPage() {
               <WorstCo2 companies={companies} devices={knownDevices} liveReadings={liveReadings} />
             </div>
             <LiveActivity messages={recentMessages} knownDevices={knownDevices} />
+          </div>
+        )}
+
+        {/* Charts section */}
+        {companiesWithDevices.length > 0 && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: C.dim, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                Графики
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginTop: 2 }}>
+                История показаний по офисам
+              </div>
+            </div>
+
+            {(filteredCompanies.length > 0 ? filteredCompanies : companiesWithDevices).map(company => {
+              const co2Devs = company.devices.filter(d =>
+                d.metrics?.includes("co2") ||
+                d.latest_values?.["co2"] !== undefined
+              );
+              const tempDevs = company.devices.filter(d => !co2Devs.includes(d));
+
+              return (
+                <div key={company.id} style={{ marginBottom: 32 }}>
+                  {/* Company header */}
+                  <div style={{
+                    fontSize: 13, fontWeight: 600, color: C.muted,
+                    marginBottom: 14, paddingBottom: 8,
+                    borderBottom: `1px solid ${C.borderSub}`,
+                    display: "flex", alignItems: "center", gap: 8,
+                  }}>
+                    <span style={{ color: C.dim }}>🏢</span>
+                    {company.name}
+                  </div>
+
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 380px), 1fr))",
+                    gap: 16,
+                  }}>
+                    {/* CO2 charts */}
+                    {co2Devs.map(d => (
+                      <SensorChart
+                        key={d.device_id + "_co2"}
+                        deviceId={d.device_id}
+                        metric="co2"
+                        unit="ppm"
+                        color="#4ade80"
+                        threshold={1000}
+                        titleLabel={d.friendly_name ?? d.device_id}
+                      />
+                    ))}
+
+                    {/* Temperature charts */}
+                    {tempDevs.filter(d => d.metrics?.includes("temperature") || d.latest_values?.["temperature"] !== undefined).map(d => (
+                      <SensorChart
+                        key={d.device_id + "_temp"}
+                        deviceId={d.device_id}
+                        metric="temperature"
+                        unit="°C"
+                        color="#fb923c"
+                        titleLabel={d.friendly_name ?? d.device_id}
+                      />
+                    ))}
+
+                    {/* Humidity charts */}
+                    {tempDevs.filter(d => d.metrics?.includes("humidity") || d.latest_values?.["humidity"] !== undefined).map(d => (
+                      <SensorChart
+                        key={d.device_id + "_hum"}
+                        deviceId={d.device_id}
+                        metric="humidity"
+                        unit="%"
+                        color="#38bdf8"
+                        titleLabel={d.friendly_name ?? d.device_id}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

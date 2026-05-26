@@ -23,3 +23,11 @@ mosquitto/log/
 .idea/
 .vscode/
 *.swp
+
+# Zigbee2MQTT runtime files
+zigbee2mqtt/log/
+zigbee2mqtt/database.db
+zigbee2mqtt/state.json
+zigbee2mqtt/coordinator_backup.json
+zigbee2mqtt/configuration_backup_*.yaml
+zigbee2mqtt/migration-*.log

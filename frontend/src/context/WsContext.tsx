@@ -34,7 +34,6 @@ export function WsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     return subscribeMessages((raw) => {
       const msg = raw as WsMessage;
-      if (isSensorMessage(msg)) return;
       setRecentMessages((prev) => {
         const next = [...prev, msg];
         return next.length > WS_LOG_CAP ? next.slice(-WS_LOG_CAP) : next;
