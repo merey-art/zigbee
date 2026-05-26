@@ -20,6 +20,8 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 class CompanyRow(BaseModel):
     id: int
     name: str
+    floor_id: int | None = None
+    office_id: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -27,10 +29,14 @@ class CompanyRow(BaseModel):
 
 class CompanyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    floor_id: int | None = None
+    office_id: str | None = None
 
 
 class CompanyPatch(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    floor_id: int | None = None
+    office_id: str | None = None
 
 
 @router.get("", response_model=list[CompanyRow])
@@ -53,7 +59,7 @@ async def create_company(
     dup = await db.execute(select(Company).where(Company.name == name))
     if dup.scalar_one_or_none() is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Company name already exists")
-    row = Company(name=name)
+    row = Company(name=name, floor_id=body.floor_id, office_id=body.office_id)
     db.add(row)
     await db.commit()
     await db.refresh(row)
@@ -76,6 +82,8 @@ async def patch_company(
     if dup.scalar_one_or_none() is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Company name already exists")
     row.name = name
+    row.floor_id = body.floor_id
+    row.office_id = body.office_id
     await db.commit()
     await db.refresh(row)
     return CompanyRow.model_validate(row)

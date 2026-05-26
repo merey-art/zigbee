@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 
 export default function LoginPage() {
+  const { t } = useTranslation();
   const { user, login, loading } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -22,7 +24,7 @@ export default function LoginPage() {
       await login(email, password);
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : t("login.failed"));
     } finally {
       setBusy(false);
     }
@@ -51,14 +53,14 @@ export default function LoginPage() {
           boxShadow: "0 24px 48px rgba(0,0,0,0.35)",
         }}
       >
-        <h1 style={{ margin: "0 0 8px", fontSize: 22, color: "#f8fafc" }}>Sign in</h1>
+        <h1 style={{ margin: "0 0 8px", fontSize: 22, color: "#f8fafc" }}>{t("login.title")}</h1>
         <p style={{ margin: "0 0 24px", fontSize: 14, color: "#64748b" }}>
-          Zigbee Sensor Dashboard
+          {t("login.subtitle")}
         </p>
         <form onSubmit={handleSubmit}>
           <label style={{ display: "block", marginBottom: 16 }}>
             <span style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
-              Email
+              {t("login.email")}
             </span>
             <input
               type="email"
@@ -71,7 +73,7 @@ export default function LoginPage() {
           </label>
           <label style={{ display: "block", marginBottom: 20 }}>
             <span style={{ display: "block", fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
-              Password
+              {t("login.password")}
             </span>
             <input
               type="password"
@@ -101,7 +103,7 @@ export default function LoginPage() {
               opacity: busy ? 0.75 : 1,
             }}
           >
-            {busy ? "Signing in…" : "Sign in"}
+            {busy ? t("login.submitting") : t("login.submit")}
           </button>
         </form>
       </div>

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api/client";
 
 const METRICS = [
@@ -67,6 +68,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 export default function AlertsPage() {
+  const { t } = useTranslation();
   const [profile, setProfile] = useState<MeProfile | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [devices, setDevices] = useState<DeviceOption[]>([]);
@@ -93,11 +95,11 @@ export default function AlertsPage() {
     if (dr.ok) setDevices(await dr.json());
     if (rr.ok) setRules(await rr.json());
     if (!pr.ok || !rr.ok) {
-      setLoadError("Не удалось загрузить настройки");
+      setLoadError(t("alerts.loadError"));
     } else {
       setLoadError(null);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     refresh();
@@ -110,33 +112,33 @@ export default function AlertsPage() {
       body: JSON.stringify({ telegram_chat_id: chatInput.trim() || null }),
     });
     if (!res.ok) {
-      alert("Ошибка сохранения");
+      alert(t("alerts.saveError"));
       return;
     }
     setProfile(await res.json());
-    alert("Сохранено");
+    alert(t("alerts.saved"));
   };
 
   const sendTest = async () => {
     const res = await apiFetch("/me/telegram/test", { method: "POST" });
     if (!res.ok) {
       const d = (await res.json().catch(() => ({}))) as { detail?: string };
-      alert(typeof d.detail === "string" ? d.detail : "Ошибка отправки");
+      alert(typeof d.detail === "string" ? d.detail : t("alerts.sendError"));
       return;
     }
-    alert("Проверьте Telegram");
+    alert(t("alerts.checkTelegram"));
   };
 
   const addRule = async () => {
     const threshold = Number(newThreshold);
     if (Number.isNaN(threshold)) {
-      alert("Укажите число в пороге");
+      alert(t("alerts.thresholdError"));
       return;
     }
     const cdMin = Number(newCooldownMin);
     const cooldown_seconds = Math.round(cdMin * 60);
     if (cooldown_seconds < 60 || cooldown_seconds > 86400) {
-      alert("Интервал: от 1 до 1440 минут");
+      alert(t("alerts.cooldownError"));
       return;
     }
     const body = {
@@ -159,7 +161,7 @@ export default function AlertsPage() {
           ? d.detail
           : Array.isArray(d.detail)
             ? JSON.stringify(d.detail)
-            : "Не удалось создать правило";
+            : t("alerts.createError");
       alert(msg);
       return;
     }
@@ -172,14 +174,14 @@ export default function AlertsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: !r.enabled }),
     });
-    if (!res.ok) alert("Ошибка");
+    if (!res.ok) alert(t("alerts.genericError"));
     else refresh();
   };
 
   const deleteRule = async (id: number) => {
-    if (!confirm("Удалить правило?")) return;
+    if (!confirm(t("alerts.deleteRule"))) return;
     const res = await apiFetch(`/alert-rules/${id}`, { method: "DELETE" });
-    if (!res.ok) alert("Ошибка");
+    if (!res.ok) alert(t("alerts.genericError"));
     else refresh();
   };
 
@@ -188,11 +190,9 @@ export default function AlertsPage() {
 
   return (
     <div style={{ padding: "24px 28px 48px", maxWidth: 920, margin: "0 auto" }}>
-      <h1 style={{ margin: "0 0 8px", fontSize: 22 }}>Уведомления Telegram</h1>
+      <h1 style={{ margin: "0 0 8px", fontSize: 22 }}>{t("alerts.title")}</h1>
       <p style={{ color: "#64748b", fontSize: 14, marginTop: 0 }}>
-        Пороги по показаниям датчиков. Нужен токен бота в переменной{" "}
-        <code style={{ color: "#94a3b8" }}>TELEGRAM_BOT_TOKEN</code> на сервере. Chat ID можно узнать у
-        бота @userinfobot.
+        {t("alerts.subtitle")}
       </p>
 
       {loadError && <p style={{ color: "#f87171" }}>{loadError}</p>}
@@ -206,25 +206,25 @@ export default function AlertsPage() {
           border: "1px solid #334155",
         }}
       >
-        <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>Ваш Telegram</h2>
+        <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>{t("alerts.yourTelegram")}</h2>
         {profile && (
           <p style={{ margin: "0 0 12px", color: "#94a3b8", fontSize: 13 }}>{profile.email}</p>
         )}
         <label style={{ display: "block", fontSize: 13, color: "#94a3b8", marginBottom: 6 }}>
-          Chat ID
+          {t("alerts.chatId")}
         </label>
         <input
           style={inputStyle}
           value={chatInput}
           onChange={(e) => setChatInput(e.target.value)}
-          placeholder="например 123456789"
+          placeholder={t("alerts.chatIdPlaceholder")}
         />
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
           <button type="button" style={btnPrimary} onClick={saveTelegram}>
-            Сохранить
+            {t("common.save")}
           </button>
           <button type="button" style={btnGhost} onClick={sendTest}>
-            Тестовое сообщение
+            {t("alerts.testMessage")}
           </button>
         </div>
       </section>
@@ -238,18 +238,18 @@ export default function AlertsPage() {
           border: "1px solid #334155",
         }}
       >
-        <h2 style={{ margin: "0 0 16px", fontSize: 16 }}>Новое правило</h2>
+        <h2 style={{ margin: "0 0 16px", fontSize: 16 }}>{t("alerts.newRule")}</h2>
         <div style={{ display: "grid", gap: 14, maxWidth: 480 }}>
           <div>
             <label style={{ display: "block", fontSize: 13, color: "#94a3b8", marginBottom: 6 }}>
-              Устройство (пусто = все)
+              {t("alerts.device")}
             </label>
             <select
               style={inputStyle}
               value={newDevice}
               onChange={(e) => setNewDevice(e.target.value)}
             >
-              <option value="">Все устройства</option>
+              <option value="">{t("alerts.allDevices")}</option>
               {devices.map((d) => (
                 <option key={d.device_id} value={d.device_id}>
                   {(d.friendly_name || d.device_id).slice(0, 48)}
@@ -259,7 +259,7 @@ export default function AlertsPage() {
           </div>
           <div>
             <label style={{ display: "block", fontSize: 13, color: "#94a3b8", marginBottom: 6 }}>
-              Метрика
+              {t("alerts.metric")}
             </label>
             <select
               style={inputStyle}
@@ -275,20 +275,20 @@ export default function AlertsPage() {
           </div>
           <div>
             <label style={{ display: "block", fontSize: 13, color: "#94a3b8", marginBottom: 6 }}>
-              Условие
+              {t("alerts.condition")}
             </label>
             <select
               style={inputStyle}
               value={newDirection}
               onChange={(e) => setNewDirection(e.target.value as "above" | "below")}
             >
-              <option value="above">Выше порога</option>
-              <option value="below">Ниже порога</option>
+              <option value="above">{t("alerts.above")}</option>
+              <option value="below">{t("alerts.below")}</option>
             </select>
           </div>
           <div>
             <label style={{ display: "block", fontSize: 13, color: "#94a3b8", marginBottom: 6 }}>
-              Порог
+              {t("alerts.threshold")}
             </label>
             <input
               style={inputStyle}
@@ -298,7 +298,7 @@ export default function AlertsPage() {
           </div>
           <div>
             <label style={{ display: "block", fontSize: 13, color: "#94a3b8", marginBottom: 6 }}>
-              Пауза после уведомления (минут)
+              {t("alerts.cooldown")}
             </label>
             <input
               style={inputStyle}
@@ -307,21 +307,21 @@ export default function AlertsPage() {
             />
           </div>
           <button type="button" style={btnPrimary} onClick={addRule}>
-            Добавить правило
+            {t("alerts.addRule")}
           </button>
         </div>
       </section>
 
-      <h2 style={{ margin: "28px 0 12px", fontSize: 16 }}>Активные правила</h2>
+      <h2 style={{ margin: "28px 0 12px", fontSize: 16 }}>{t("alerts.activeRules")}</h2>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
         <thead>
           <tr style={{ textAlign: "left" }}>
-            <th style={th}>Вкл</th>
-            <th style={th}>Устройство</th>
-            <th style={th}>Метрика</th>
-            <th style={th}>Условие</th>
-            <th style={th}>Порог</th>
-            <th style={th}>Пауза</th>
+            <th style={th}>{t("alerts.colEnabled")}</th>
+            <th style={th}>{t("alerts.colDevice")}</th>
+            <th style={th}>{t("alerts.colMetric")}</th>
+            <th style={th}>{t("alerts.colCondition")}</th>
+            <th style={th}>{t("alerts.colThreshold")}</th>
+            <th style={th}>{t("alerts.colCooldown")}</th>
             <th style={th} />
           </tr>
         </thead>
@@ -336,14 +336,14 @@ export default function AlertsPage() {
                   aria-label="enabled"
                 />
               </td>
-              <td style={td}>{r.device_id ?? "— все —"}</td>
+              <td style={td}>{r.device_id ?? t("alerts.allDevicesRow")}</td>
               <td style={td}>{r.metric}</td>
-              <td style={td}>{r.direction === "above" ? "выше" : "ниже"}</td>
+              <td style={td}>{r.direction === "above" ? t("alerts.aboveShort") : t("alerts.belowShort")}</td>
               <td style={td}>{r.threshold}</td>
-              <td style={td}>{Math.round(r.cooldown_seconds / 60)} мин</td>
+              <td style={td}>{t("alerts.minutes", { n: Math.round(r.cooldown_seconds / 60) })}</td>
               <td style={td}>
                 <button type="button" style={btnGhost} onClick={() => deleteRule(r.id)}>
-                  Удалить
+                  {t("common.delete")}
                 </button>
               </td>
             </tr>
@@ -351,7 +351,7 @@ export default function AlertsPage() {
         </tbody>
       </table>
       {rules.length === 0 && (
-        <p style={{ color: "#64748b", fontSize: 14 }}>Правил пока нет.</p>
+        <p style={{ color: "#64748b", fontSize: 14 }}>{t("alerts.noRules")}</p>
       )}
     </div>
   );

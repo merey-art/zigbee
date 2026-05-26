@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
@@ -9,6 +10,7 @@ interface UserRow {
 }
 
 export default function UsersPage() {
+  const { t } = useTranslation();
   const { user: currentUser } = useAuth();
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -25,12 +27,12 @@ export default function UsersPage() {
   const refresh = useCallback(async () => {
     const res = await apiFetch("/users");
     if (!res.ok) {
-      setLoadError("Could not load users");
+      setLoadError(t("users.loadError"));
       return;
     }
     setLoadError(null);
     setRows(await res.json());
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     refresh();
@@ -44,7 +46,7 @@ export default function UsersPage() {
     });
     if (!res.ok) {
       const d = (await res.json().catch(() => ({}))) as { detail?: string };
-      alert(typeof d.detail === "string" ? d.detail : "Create failed");
+      alert(typeof d.detail === "string" ? d.detail : t("users.createError"));
       return;
     }
     setAddOpen(false);
@@ -61,7 +63,7 @@ export default function UsersPage() {
       body: JSON.stringify({ new_password: pwdValue }),
     });
     if (!res.ok) {
-      alert("Could not update password");
+      alert(t("users.passwordError"));
       return;
     }
     setPwdUserId(null);
@@ -73,7 +75,7 @@ export default function UsersPage() {
     const res = await apiFetch(`/users/${deleteId}`, { method: "DELETE" });
     if (!res.ok) {
       const d = (await res.json().catch(() => ({}))) as { detail?: string };
-      alert(typeof d.detail === "string" ? d.detail : "Delete failed");
+      alert(typeof d.detail === "string" ? d.detail : t("users.deleteError"));
       return;
     }
     setDeleteId(null);
@@ -103,16 +105,16 @@ export default function UsersPage() {
   return (
     <div style={{ padding: "24px 28px 48px", maxWidth: 960, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0, fontSize: 22 }}>Users</h1>
+        <h1 style={{ margin: 0, fontSize: 22 }}>{t("users.title")}</h1>
         <button
           type="button"
           onClick={() => setAddOpen(true)}
           style={btnPrimary}
         >
-          Add user
+          {t("users.addUser")}
         </button>
       </div>
-      <p style={{ color: "#64748b", fontSize: 14 }}>Manage dashboard accounts.</p>
+      <p style={{ color: "#64748b", fontSize: 14 }}>{t("users.subtitle")}</p>
 
       {loadError && <p style={{ color: "#f87171" }}>{loadError}</p>}
 
@@ -120,9 +122,9 @@ export default function UsersPage() {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "#94a3b8" }}>
-              <th style={th}>Email</th>
-              <th style={th}>Created</th>
-              <th style={th}>Actions</th>
+              <th style={th}>{t("users.colEmail")}</th>
+              <th style={th}>{t("users.colCreated")}</th>
+              <th style={th}>{t("users.colActions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -132,7 +134,7 @@ export default function UsersPage() {
                 <td style={td}>{new Date(u.created_at).toLocaleString()}</td>
                 <td style={td}>
                   <button type="button" style={btnGhost} onClick={() => setPwdUserId(u.id)}>
-                    Change password
+                    {t("users.changePassword")}
                   </button>
                   <button
                     type="button"
@@ -144,7 +146,7 @@ export default function UsersPage() {
                     disabled={u.id === currentUser?.id}
                     onClick={() => setDeleteId(u.id)}
                   >
-                    Delete
+                    {t("common.delete")}
                   </button>
                 </td>
               </tr>
@@ -156,9 +158,9 @@ export default function UsersPage() {
       {addOpen && (
         <div style={modalBackdrop}>
           <div style={modalBox}>
-            <h2 style={{ marginTop: 0 }}>Add user</h2>
+            <h2 style={{ marginTop: 0 }}>{t("users.addUser")}</h2>
             <label style={lbl}>
-              Email
+              {t("common.email")}
               <input
                 style={inp}
                 type="email"
@@ -167,7 +169,7 @@ export default function UsersPage() {
               />
             </label>
             <label style={lbl}>
-              Password
+              {t("common.password")}
               <input
                 style={inp}
                 type="password"
@@ -177,10 +179,10 @@ export default function UsersPage() {
             </label>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
               <button type="button" style={btnGhost} onClick={() => setAddOpen(false)}>
-                Cancel
+                {t("common.cancel")}
               </button>
               <button type="button" style={btnPrimary} onClick={submitAdd}>
-                Create
+                {t("common.create")}
               </button>
             </div>
           </div>
@@ -190,9 +192,9 @@ export default function UsersPage() {
       {pwdUserId !== null && (
         <div style={modalBackdrop}>
           <div style={modalBox}>
-            <h2 style={{ marginTop: 0 }}>New password</h2>
+            <h2 style={{ marginTop: 0 }}>{t("users.changePassword")}</h2>
             <label style={lbl}>
-              Password
+              {t("common.password")}
               <input
                 style={inp}
                 type="password"
@@ -202,10 +204,10 @@ export default function UsersPage() {
             </label>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
               <button type="button" style={btnGhost} onClick={() => setPwdUserId(null)}>
-                Cancel
+                {t("common.cancel")}
               </button>
               <button type="button" style={btnPrimary} onClick={submitPwd}>
-                Save
+                {t("common.save")}
               </button>
             </div>
           </div>
@@ -215,14 +217,14 @@ export default function UsersPage() {
       {deleteId !== null && (
         <div style={modalBackdrop}>
           <div style={modalBox}>
-            <h2 style={{ marginTop: 0 }}>Delete user?</h2>
-            <p style={{ color: "#94a3b8" }}>This cannot be undone.</p>
+            <h2 style={{ marginTop: 0 }}>{t("users.deleteUser")}</h2>
+            <p style={{ color: "#94a3b8" }}>{t("users.deleteConfirm")}</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
               <button type="button" style={btnGhost} onClick={() => setDeleteId(null)}>
-                Cancel
+                {t("common.cancel")}
               </button>
               <button type="button" style={{ ...btnPrimary, background: "#dc2626" }} onClick={confirmDelete}>
-                Delete
+                {t("common.delete")}
               </button>
             </div>
           </div>

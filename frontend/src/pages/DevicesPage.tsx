@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api/client";
 import { useDashboardWs, isBridgeEvent } from "../context/WsContext";
 
@@ -26,6 +27,7 @@ function normIeee(s: string): string {
 }
 
 export default function DevicesPage() {
+  const { t } = useTranslation();
   const { lastMessage } = useDashboardWs();
   const [devices, setDevices] = useState<BridgeDeviceRow[]>([]);
   const [dashboardDevices, setDashboardDevices] = useState<DashboardDeviceRow[]>([]);
@@ -43,13 +45,13 @@ export default function DevicesPage() {
   const loadDevices = useCallback(async () => {
     const res = await apiFetch("/bridge/devices");
     if (!res.ok) {
-      setLoadError("Could not load devices (is Zigbee2MQTT publishing bridge/devices?)");
+      setLoadError(t("devices.loadError"));
       return;
     }
     setLoadError(null);
     const json = (await res.json()) as BridgeDeviceRow[];
     setDevices(Array.isArray(json) ? json : []);
-  }, []);
+  }, [t]);
 
   const loadAssignments = useCallback(async () => {
     const [dr, cr] = await Promise.all([apiFetch("/devices"), apiFetch("/companies")]);
@@ -102,7 +104,7 @@ export default function DevicesPage() {
         body: JSON.stringify({ time: JOIN_SECONDS }),
       });
       if (!res.ok) {
-        alert("Permit join request failed");
+        alert(t("devices.permitJoinError"));
         return;
       }
       setJoinEndsAt(Date.now() + JOIN_SECONDS * 1000);
@@ -120,7 +122,7 @@ export default function DevicesPage() {
       body: JSON.stringify({ friendly_name: name }),
     });
     if (!res.ok) {
-      alert("Rename failed — wait until bridge/devices lists this device.");
+      alert(t("devices.renameError"));
       return;
     }
     setEditingIeee(null);
@@ -142,7 +144,7 @@ export default function DevicesPage() {
       body: JSON.stringify({ company_id: companyId }),
     });
     if (!res.ok) {
-      alert("Could not update company assignment");
+      alert(t("devices.companyError"));
       return;
     }
     loadAssignments();
@@ -154,7 +156,7 @@ export default function DevicesPage() {
       method: "DELETE",
     });
     if (!res.ok) {
-      alert("Remove failed");
+      alert(t("common.error"));
       return;
     }
     setRemoveIeee(null);
@@ -165,7 +167,7 @@ export default function DevicesPage() {
   return (
     <div style={{ padding: "24px 28px 48px", maxWidth: 1100, margin: "0 auto" }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center" }}>
-        <h1 style={{ margin: 0, flex: "1 1 auto", fontSize: 22 }}>Devices</h1>
+        <h1 style={{ margin: 0, flex: "1 1 auto", fontSize: 22 }}>{t("devices.title")}</h1>
         <button
           type="button"
           disabled={joinBusy || joinRemaining > 0}
@@ -180,11 +182,13 @@ export default function DevicesPage() {
             cursor: joinBusy ? "wait" : "pointer",
           }}
         >
-          {joinRemaining > 0 ? `Adding… ${joinRemaining}s` : "Add device"}
+          {joinRemaining > 0
+            ? t("devices.adding", { sec: joinRemaining })
+            : t("devices.addDevice")}
         </button>
       </div>
       <p style={{ color: "#64748b", fontSize: 14 }}>
-        Opens pairing for {JOIN_SECONDS}s via Zigbee2MQTT bridge. Live bridge events appear below.
+        {t("devices.pairingHint", { sec: JOIN_SECONDS })}
       </p>
 
       {loadError && <p style={{ color: "#f87171", marginBottom: 12 }}>{loadError}</p>}
@@ -193,12 +197,12 @@ export default function DevicesPage() {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
           <thead>
             <tr style={{ textAlign: "left", color: "#94a3b8" }}>
-              <th style={th}>Name</th>
-              <th style={th}>IEEE</th>
-              <th style={th}>Last seen</th>
-              <th style={th}>Battery</th>
-              <th style={th}>Company</th>
-              <th style={th}>Actions</th>
+              <th style={th}>{t("devices.colName")}</th>
+              <th style={th}>{t("devices.colIeee")}</th>
+              <th style={th}>{t("devices.colLastSeen")}</th>
+              <th style={th}>{t("devices.colBattery")}</th>
+              <th style={th}>{t("devices.colCompany")}</th>
+              <th style={th}>{t("devices.colActions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -266,7 +270,7 @@ export default function DevicesPage() {
                   </td>
                   <td style={td}>
                     <button type="button" style={btnDanger} onClick={() => setRemoveIeee(ieee)}>
-                      Remove
+                      {t("devices.remove")}
                     </button>
                   </td>
                 </tr>
@@ -277,7 +281,7 @@ export default function DevicesPage() {
       </div>
 
       <section style={{ marginTop: 28 }}>
-        <h2 style={{ fontSize: 15, color: "#94a3b8", marginBottom: 10 }}>Bridge activity</h2>
+        <h2 style={{ fontSize: 15, color: "#94a3b8", marginBottom: 10 }}>{t("devices.bridgeActivity")}</h2>
         <div
           style={{
             background: "#1e293b",
@@ -292,7 +296,7 @@ export default function DevicesPage() {
           }}
         >
           {events.length === 0 ? (
-            <span style={{ color: "#475569" }}>No bridge events yet.</span>
+            <span style={{ color: "#475569" }}>{t("devices.noBridgeEvents")}</span>
           ) : (
             events.map((line, i) => (
               <div key={i} style={{ marginBottom: 6 }}>
@@ -306,14 +310,14 @@ export default function DevicesPage() {
       {removeIeee && (
         <div style={modalBackdrop}>
           <div style={modalBox}>
-            <h2 style={{ marginTop: 0 }}>Remove device?</h2>
+            <h2 style={{ marginTop: 0 }}>{t("devices.removeTitle")}</h2>
             <p style={{ color: "#94a3b8", wordBreak: "break-all" }}>{removeIeee}</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
               <button type="button" style={btnGhost} onClick={() => setRemoveIeee(null)}>
-                Cancel
+                {t("common.cancel")}
               </button>
               <button type="button" style={{ ...btnGhost, background: "#dc2626", border: "none" }} onClick={confirmRemove}>
-                Remove
+                {t("devices.remove")}
               </button>
             </div>
           </div>

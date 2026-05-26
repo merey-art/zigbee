@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch } from "../api/client";
 
 type Period = "1d" | "7d" | "30d";
@@ -60,6 +61,7 @@ const btnPrimary: React.CSSProperties = {
 };
 
 export default function ReportsPage() {
+  const { t } = useTranslation();
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [companyId, setCompanyId] = useState<string>("");
   const [events, setEvents] = useState<AlertEventRow[]>([]);
@@ -73,12 +75,12 @@ export default function ReportsPage() {
   const loadEvents = useCallback(async () => {
     const res = await apiFetch("/alert-events?limit=500");
     if (!res.ok) {
-      setEventsError("Could not load alert history");
+      setEventsError(t("reports.loadError"));
       return;
     }
     setEventsError(null);
     setEvents(await res.json());
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadCompanies();
@@ -93,6 +95,12 @@ export default function ReportsPage() {
 
   const exportXlsx = (p: Period) => {
     void downloadReport(`/reports/readings.xlsx?period=${p}${co}`, `sensor_readings_${p}.xlsx`);
+  };
+
+  const periodLabel = (p: Period) => {
+    if (p === "1d") return t("reports.lastDay");
+    if (p === "7d") return t("reports.lastWeek");
+    return t("reports.lastMonth");
   };
 
   const th: React.CSSProperties = {
@@ -110,10 +118,9 @@ export default function ReportsPage() {
 
   return (
     <div style={{ padding: "24px 28px 48px", maxWidth: 1100, margin: "0 auto" }}>
-      <h1 style={{ margin: "0 0 8px", fontSize: 22 }}>Reports</h1>
+      <h1 style={{ margin: "0 0 8px", fontSize: 22 }}>{t("reports.title")}</h1>
       <p style={{ color: "#64748b", fontSize: 14, marginTop: 0 }}>
-        Export raw sensor readings for management (CSV opens in Excel; XLSX is a native workbook).
-        Optional office filter limits rows to devices assigned to that company.
+        {t("reports.subtitle")}
       </p>
 
       <section
@@ -125,9 +132,9 @@ export default function ReportsPage() {
           border: "1px solid #334155",
         }}
       >
-        <h2 style={{ margin: "0 0 14px", fontSize: 16 }}>Export readings</h2>
+        <h2 style={{ margin: "0 0 14px", fontSize: 16 }}>{t("reports.exportReadings")}</h2>
         <label style={{ display: "block", fontSize: 13, color: "#94a3b8", marginBottom: 6 }}>
-          Office filter (optional)
+          {t("reports.officeFilter")}
         </label>
         <select
           value={companyId}
@@ -143,7 +150,7 @@ export default function ReportsPage() {
             marginBottom: 18,
           }}
         >
-          <option value="">All devices</option>
+          <option value="">{t("reports.allDevices")}</option>
           {companies.map((c) => (
             <option key={c.id} value={String(c.id)}>
               {c.name}
@@ -154,8 +161,8 @@ export default function ReportsPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {(["1d", "7d", "30d"] as const).map((p) => (
             <div key={p} style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-              <span style={{ width: 100, fontWeight: 600, color: "#cbd5e1" }}>
-                {p === "1d" ? "Last day" : p === "7d" ? "Last week" : "Last month"}
+              <span style={{ width: 140, fontWeight: 600, color: "#cbd5e1" }}>
+                {periodLabel(p)}
               </span>
               <button type="button" style={btnPrimary} onClick={() => exportCsv(p)}>
                 CSV
@@ -170,27 +177,26 @@ export default function ReportsPage() {
 
       <section style={{ marginTop: 28 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Alert history</h2>
+          <h2 style={{ margin: 0, fontSize: 16 }}>{t("reports.alertHistory")}</h2>
           <button type="button" style={btn} onClick={() => loadEvents()}>
-            Refresh
+            {t("common.refresh")}
           </button>
         </div>
         <p style={{ color: "#64748b", fontSize: 13 }}>
-          Logged when a rule threshold is crossed (after cooldown). Telegram column shows whether a
-          message was delivered.
+          {t("reports.alertHistoryHint")}
         </p>
         {eventsError && <p style={{ color: "#f87171" }}>{eventsError}</p>}
         <div style={{ overflowX: "auto", marginTop: 12, border: "1px solid #334155", borderRadius: 10 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
             <thead>
               <tr>
-                <th style={th}>Time (UTC)</th>
-                <th style={th}>Device</th>
-                <th style={th}>Metric</th>
-                <th style={th}>Value</th>
-                <th style={th}>Threshold</th>
-                <th style={th}>Dir</th>
-                <th style={th}>Telegram</th>
+                <th style={th}>{t("reports.colTime")}</th>
+                <th style={th}>{t("reports.colDevice")}</th>
+                <th style={th}>{t("reports.colMetric")}</th>
+                <th style={th}>{t("reports.colValue")}</th>
+                <th style={th}>{t("reports.colThreshold")}</th>
+                <th style={th}>{t("reports.colDir")}</th>
+                <th style={th}>{t("reports.colTelegram")}</th>
               </tr>
             </thead>
             <tbody>
@@ -202,13 +208,13 @@ export default function ReportsPage() {
                   <td style={td}>{e.value}</td>
                   <td style={td}>{e.threshold}</td>
                   <td style={td}>{e.direction}</td>
-                  <td style={td}>{e.telegram_sent ? "yes" : "no"}</td>
+                  <td style={td}>{e.telegram_sent ? t("common.yes") : t("common.no")}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           {events.length === 0 && !eventsError && (
-            <div style={{ padding: 24, color: "#475569", fontSize: 14 }}>No alert events yet.</div>
+            <div style={{ padding: 24, color: "#475569", fontSize: 14 }}>{t("reports.noEvents")}</div>
           )}
         </div>
       </section>

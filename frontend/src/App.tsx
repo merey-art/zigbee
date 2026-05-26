@@ -10,6 +10,7 @@ import UsersPage from "./pages/UsersPage";
 import LogsPage from "./pages/LogsPage";
 import AlertsPage from "./pages/AlertsPage";
 import ReportsPage from "./pages/ReportsPage";
+import FloorMapPage from "./pages/FloorMapPage";
 
 function RootRedirect() {
   const { user, loading } = useAuth();
@@ -39,6 +40,7 @@ function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/floor-map" element={<FloorMapPage />} />
           <Route path="/devices" element={<DevicesPage />} />
           <Route path="/companies" element={<CompaniesPage />} />
           <Route path="/users" element={<UsersPage />} />

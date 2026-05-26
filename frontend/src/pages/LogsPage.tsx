@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   useDashboardWs,
   isBridgeEvent,
@@ -63,6 +64,7 @@ function formatTime(msg: WsMessage): string {
 }
 
 export default function LogsPage() {
+  const { t } = useTranslation();
   const { recentMessages, clearRecentMessages, status } = useDashboardWs();
   const [followTail, setFollowTail] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -105,21 +107,21 @@ export default function LogsPage() {
   return (
     <div style={pageStyle}>
       <header style={headerStyle}>
-        <h1 style={h1Style}>📜 Logs</h1>
+        <h1 style={h1Style}>{t("logs.title")}</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <WsStatusBadge status={status} />
           <span style={{ fontSize: 13, color: "#64748b" }}>
-            {recentMessages.length} entries (max 500, no sensor stream)
+            {t("logs.entries", { count: recentMessages.length })}
           </span>
         </div>
       </header>
 
       <div style={{ padding: "20px 32px 0", display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button type="button" style={btnStyle} onClick={clearRecentMessages}>
-          Clear
+          {t("logs.clear")}
         </button>
         <button type="button" style={btnStyle} onClick={() => setFollowTail((v) => !v)}>
-          {followTail ? "Pause scroll" : "Follow tail"}
+          {followTail ? t("logs.pauseScroll") : t("logs.followTail")}
         </button>
         <button
           type="button"
@@ -127,13 +129,12 @@ export default function LogsPage() {
           onClick={copyAll}
           disabled={recentMessages.length === 0}
         >
-          Copy all (JSONL)
+          {t("logs.copyAll")}
         </button>
       </div>
 
       <p style={{ padding: "12px 32px 0", margin: 0, fontSize: 13, color: "#64748b" }}>
-        Zigbee2MQTT bridge and other non-telemetry WebSocket messages. Live sensor readings stay on
-        the dashboard.
+        {t("logs.hint")}
       </p>
 
       <div style={{ padding: 24 }}>
@@ -152,7 +153,7 @@ export default function LogsPage() {
         >
           {lines.length === 0 ? (
             <div style={{ padding: 32, color: "#475569" }}>
-              No bridge or system messages yet. Pairing and bridge updates appear here.
+              {t("logs.noMessages")}
             </div>
           ) : (
             lines.map(({ i, msg, kind, kindColor, time }) => (
