@@ -6,6 +6,7 @@ aiomqtt==2.1.0
 pydantic==2.7.1
 pydantic-settings==2.2.1
 python-dateutil==2.9.0
+numpy==1.26.4
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.3
 PyJWT==2.10.1

@@ -91,6 +91,10 @@ const en = {
     noFilterMatch: "No offices with devices match the selected filter.",
     allDevices: "All devices →",
   },
+  chart: {
+    forecast: "forecast",
+    thresholdEta: "At the current rate, {{metric}} threshold in ~{{mins}} min",
+  },
   devices: {
     title: "Devices",
     addDevice: "Add Device",

@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     emergency_sustained_readings: int = 2
     emergency_device_pairs: str = ""
 
+    # Forecast: default "time to threshold" targets per metric
+    forecast_threshold_co2: float = 1000.0
+    forecast_threshold_temperature: float = 30.0
+    forecast_threshold_humidity: float = 70.0
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",")]

@@ -3,6 +3,7 @@ REST API endpoints:
 
   GET  /devices
   GET  /devices/{device_id}/history?metric=co2&from=...&to=...
+  GET  /devices/{device_id}/forecast?metric=co2&horizon_min=30
   GET  /health
 """
 
@@ -18,7 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth_deps import get_current_user
 from app.bridge_devices_store import aliases_for_readings, canonical_device_id, display_label_for_canonical
+from app.config import settings
 from app.database import get_db
+from app.forecast import FORECAST_MAX_READINGS, compute_forecast
 from app.models import Company, DeviceCompany, SensorReading, User
 
 router = APIRouter()
@@ -46,6 +49,26 @@ class HistoryResponse(BaseModel):
     device_id: str
     metric: str
     readings: list[ReadingPoint]
+
+
+class ForecastPoint(BaseModel):
+    recorded_at: datetime
+    value: float
+
+
+class ForecastData(BaseModel):
+    points: list[ForecastPoint]
+    slope_per_min: float
+    threshold: float | None = None
+    time_to_threshold_min: float | None = None
+
+
+class ForecastResponse(BaseModel):
+    device_id: str
+    metric: str
+    horizon_min: int
+    forecast: ForecastData | None = None
+    reason: str | None = None
 
 
 class AssignCompanyBody(BaseModel):
@@ -239,3 +262,64 @@ async def get_history(
         for recorded_at, value in reversed(rows)
     ]
     return HistoryResponse(device_id=canon, metric=metric, readings=readings)
+
+
+# ── Forecast ───────────────────────────────────────────────────────────────────
+
+
+def _forecast_default_threshold(metric: str) -> float | None:
+    return {
+        "co2": settings.forecast_threshold_co2,
+        "temperature": settings.forecast_threshold_temperature,
+        "humidity": settings.forecast_threshold_humidity,
+    }.get(metric)
+
+
+@router.get("/devices/{device_id}/forecast", response_model=ForecastResponse)
+async def get_forecast(
+    device_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
+    metric: Annotated[str, Query(description="Metric name, e.g. co2, temperature")] = "co2",
+    horizon_min: Annotated[int, Query(ge=1, le=1440)] = 30,
+    threshold: Annotated[float | None, Query(description="Override the default per-metric threshold")] = None,
+) -> ForecastResponse:
+    """Linear-regression forecast over the most recent readings for device + metric."""
+    aliases = await aliases_for_readings(device_id)
+    canon = await canonical_device_id(device_id.split("/")[0].strip())
+
+    stmt = (
+        select(SensorReading.recorded_at, SensorReading.value)
+        .where(
+            SensorReading.device_id.in_(aliases),
+            SensorReading.metric == metric,
+        )
+        .order_by(SensorReading.recorded_at.desc())
+        .limit(FORECAST_MAX_READINGS)
+    )
+    rows = [
+        (recorded_at, float(value))
+        for recorded_at, value in reversed((await db.execute(stmt)).all())
+    ]
+
+    if threshold is None:
+        threshold = _forecast_default_threshold(metric)
+
+    result = compute_forecast(rows, horizon_min, threshold)
+    if result is None:
+        return ForecastResponse(
+            device_id=canon, metric=metric, horizon_min=horizon_min,
+            reason="insufficient_data",
+        )
+
+    return ForecastResponse(
+        device_id=canon,
+        metric=metric,
+        horizon_min=horizon_min,
+        forecast=ForecastData(
+            points=[ForecastPoint(recorded_at=ts, value=v) for ts, v in result.points],
+            slope_per_min=result.slope_per_min,
+            threshold=result.threshold,
+            time_to_threshold_min=result.time_to_threshold_min,
+        ),
+    )

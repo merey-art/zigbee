@@ -91,6 +91,10 @@ const kz = {
     noFilterMatch: "Таңдалған сүзгі бойынша құрылғылары бар офис жоқ.",
     allDevices: "Барлық құрылғылар →",
   },
+  chart: {
+    forecast: "болжам",
+    thresholdEta: "Қазіргі қарқынмен {{metric}} шегіне ~{{mins}} мин қалды",
+  },
   devices: {
     title: "Құрылғылар",
     addDevice: "Құрылғы қосу",

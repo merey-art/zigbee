@@ -91,6 +91,10 @@ const ru = {
     noFilterMatch: "Нет офисов с устройствами для выбранного фильтра.",
     allDevices: "Все устройства →",
   },
+  chart: {
+    forecast: "прогноз",
+    thresholdEta: "При текущем темпе порог {{metric}} через ~{{mins}} мин",
+  },
   devices: {
     title: "Устройства",
     addDevice: "Добавить устройство",
