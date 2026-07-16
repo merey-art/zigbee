@@ -249,6 +249,18 @@ const kz = {
     colThreshold: "Шек",
     colDir: "Шарт",
     colTelegram: "Telegram",
+    emergencyHistory: "Төтенше оқиғалар тарихы",
+    emergencyHistoryHint: "Жоғары басымдықтағы оқиғалар: температура мен CO₂ өсуі бойынша ықтимал өрт.",
+    colStatus: "Күй",
+    colAck: "Расталды",
+    noEmergencyEvents: "Әзірге төтенше оқиғалар жоқ.",
+    emergencyLoadError: "Төтенше оқиғалар тарихын жүктеу мүмкін болмады",
+  },
+  emergency: {
+    title: "ШҰҒЫЛ",
+    subtitle: "Ықтимал өрт: температура мен CO₂ күрт өсті",
+    device: "Сенсор",
+    ack: "Түсінікті",
   },
 } as const;
 

@@ -12,7 +12,27 @@ export interface BridgeEventMessage {
   timestamp: string;
 }
 
-export type WsMessage = SensorMessage | BridgeEventMessage | Record<string, unknown>;
+export interface EmergencyMessage {
+  type: "emergency";
+  status: "active" | "acknowledged" | "cleared";
+  event_id: number;
+  key: string;
+  device_id: string | null;
+  temp_device_id: string | null;
+  co2_device_id: string | null;
+  zone_id: string | null;
+  temperature: number;
+  co2: number;
+  temperature_rate: number;
+  co2_rate: number;
+  consecutive_readings: number;
+  started_at: string;
+  last_seen_at: string;
+  acknowledged_at: string | null;
+  cleared_at: string | null;
+}
+
+export type WsMessage = SensorMessage | BridgeEventMessage | EmergencyMessage | Record<string, unknown>;
 
 const WS_LOG_CAP = 500;
 
@@ -72,8 +92,15 @@ export function isBridgeEvent(msg: WsMessage | null): msg is BridgeEventMessage 
   return msg !== null && typeof msg === "object" && (msg as BridgeEventMessage).type === "bridge_event";
 }
 
+export function isEmergencyMessage(msg: WsMessage | null): msg is EmergencyMessage {
+  return msg !== null && typeof msg === "object" && (msg as EmergencyMessage).type === "emergency";
+}
+
 export function isSensorMessage(msg: WsMessage | null): msg is SensorMessage {
   if (!msg || typeof msg !== "object") return false;
-  if ("type" in msg && (msg as { type?: string }).type === "bridge_event") return false;
+  if ("type" in msg) {
+    const type = (msg as { type?: string }).type;
+    if (type === "bridge_event" || type === "emergency") return false;
+  }
   return typeof (msg as SensorMessage).device_id === "string";
 }

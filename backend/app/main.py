@@ -24,12 +24,13 @@ from app.auth_deps import hash_password, ws_user_from_cookies
 from app.auth_routes import router as auth_router
 from app.bridge_routes import router as bridge_router
 from app.companies_routes import router as companies_router
+from app.emergency_routes import router as emergency_router
 from app.profile_routes import router as profile_router
 from app.reports_routes import router as reports_router
 from app.config import settings
 from app.database import AsyncSessionLocal, Base, engine
-from app.models import HYPERTABLE_SQL
-from app.models import User
+from app.emergency_detector import hydrate_detector_state_from_db
+from app.models import HYPERTABLE_SQL, User
 from app.mqtt_listener import run_mqtt_listener
 from app.users_routes import router as users_router
 from app.websocket import manager
@@ -62,6 +63,15 @@ async def startup() -> None:
         await conn.execute(
             text("ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR(32);")
         )
+        await conn.execute(
+            text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS co2_device_id VARCHAR(128);")
+        )
+        await conn.execute(
+            text("ALTER TABLE companies ADD COLUMN IF NOT EXISTS temp_device_id VARCHAR(128);")
+        )
+        await conn.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_emergency_events_active_key ON emergency_events (key) WHERE status IN ('active', 'acknowledged');")
+        )
 
     # 2. Seed admin if no users
     async with AsyncSessionLocal() as session:
@@ -85,7 +95,10 @@ async def startup() -> None:
         # TimescaleDB extension may not be available in plain PG dev setups
         logger.warning("Could not create hypertable (TimescaleDB unavailable?): %s", exc)
 
-    # 4. Start MQTT listener
+    # 4. Hydrate emergency detector from active DB rows
+    await hydrate_detector_state_from_db()
+
+    # 5. Start MQTT listener
     asyncio.create_task(run_mqtt_listener())
     logger.info("MQTT listener task started.")
 
@@ -103,6 +116,7 @@ app.include_router(users_router)
 app.include_router(profile_router)
 app.include_router(alert_router)
 app.include_router(alert_events_router)
+app.include_router(emergency_router)
 app.include_router(reports_router)
 app.include_router(bridge_router)
 app.include_router(api_router)

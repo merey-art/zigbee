@@ -249,6 +249,18 @@ const en = {
     colThreshold: "Threshold",
     colDir: "Condition",
     colTelegram: "Telegram",
+    emergencyHistory: "Emergency History",
+    emergencyHistoryHint: "High-priority emergency events: possible fire by temperature and CO₂ rise.",
+    colStatus: "Status",
+    colAck: "Acknowledged",
+    noEmergencyEvents: "No emergency events yet.",
+    emergencyLoadError: "Failed to load emergency history",
+  },
+  emergency: {
+    title: "URGENT",
+    subtitle: "Possible fire: rapid temperature and CO₂ rise",
+    device: "Device",
+    ack: "Acknowledge",
   },
 } as const;
 

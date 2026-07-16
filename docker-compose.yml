@@ -70,11 +70,13 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── FastAPI Backend (no host ports — reachable only on zigbee-net) ───────────
+  # ── FastAPI Backend ───────────────────────────────────────────────────────────
   backend:
     build: ./backend
     container_name: backend
     restart: unless-stopped
+    ports:
+      - "8000:8000"
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -91,6 +93,11 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      EMERGENCY_TEMP_RATE: ${EMERGENCY_TEMP_RATE:-2.0}
+      EMERGENCY_CO2_RATE: ${EMERGENCY_CO2_RATE:-200}
+      EMERGENCY_TEMP_ABSOLUTE: ${EMERGENCY_TEMP_ABSOLUTE:-35}
+      EMERGENCY_SUSTAINED_READINGS: ${EMERGENCY_SUSTAINED_READINGS:-2}
+      EMERGENCY_DEVICE_PAIRS: ${EMERGENCY_DEVICE_PAIRS:-}
     networks:
       - zigbee-net
 

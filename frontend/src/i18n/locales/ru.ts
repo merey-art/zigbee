@@ -249,6 +249,18 @@ const ru = {
     colThreshold: "Порог",
     colDir: "Условие",
     colTelegram: "Telegram",
+    emergencyHistory: "История ЧП",
+    emergencyHistoryHint: "Срочные аварийные события: возможный пожар по росту температуры и CO₂.",
+    colStatus: "Статус",
+    colAck: "Подтверждено",
+    noEmergencyEvents: "Аварийных событий пока нет.",
+    emergencyLoadError: "Не удалось загрузить историю ЧП",
+  },
+  emergency: {
+    title: "СРОЧНО",
+    subtitle: "Возможный пожар: резкий рост температуры и CO₂",
+    device: "Датчик",
+    ack: "Понятно",
   },
 } as const;
 

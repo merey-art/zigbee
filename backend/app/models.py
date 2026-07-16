@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -32,6 +32,8 @@ class Company(Base):
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     floor_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     office_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    co2_device_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    temp_device_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -114,6 +116,41 @@ class AlertEvent(Base):
     )
 
     __table_args__ = (Index("ix_alert_events_user_time", "user_id", "created_at"),)
+
+
+class EmergencyEvent(Base):
+    """One possible-fire emergency instance. Active/acknowledged rows are updated, not duplicated."""
+
+    __tablename__ = "emergency_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="active", server_default=text("'active'"))
+    device_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    temp_device_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    co2_device_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    zone_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    temperature: Mapped[float] = mapped_column(Float, nullable=False)
+    co2: Mapped[float] = mapped_column(Float, nullable=False)
+    temperature_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    co2_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    threshold_temp_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    threshold_co2_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    threshold_temp_absolute: Mapped[float] = mapped_column(Float, nullable=False)
+    threshold_sustained_readings: Mapped[int] = mapped_column(Integer, nullable=False)
+    consecutive_readings: Mapped[int] = mapped_column(Integer, nullable=False)
+    telegram_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
+    telegram_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    acknowledged_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("NOW()"))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=text("NOW()"))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cleared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_emergency_events_key_status", "key", "status"),
+        Index("ix_emergency_events_started_at", "started_at"),
+    )
 
 
 class SensorReading(Base):

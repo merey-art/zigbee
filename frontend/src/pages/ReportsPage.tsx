@@ -21,6 +21,26 @@ interface AlertEventRow {
   created_at: string;
 }
 
+interface EmergencyEventRow {
+  id: number;
+  key: string;
+  status: string;
+  device_id: string | null;
+  temp_device_id: string | null;
+  co2_device_id: string | null;
+  zone_id: string | null;
+  temperature: number;
+  co2: number;
+  temperature_rate: number;
+  co2_rate: number;
+  telegram_sent: boolean;
+  acknowledged_by: number | null;
+  started_at: string;
+  last_seen_at: string;
+  acknowledged_at: string | null;
+  cleared_at: string | null;
+}
+
 async function downloadReport(pathWithQuery: string, fallbackName: string) {
   const res = await apiFetch(pathWithQuery);
   if (!res.ok) {
@@ -65,7 +85,9 @@ export default function ReportsPage() {
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [companyId, setCompanyId] = useState<string>("");
   const [events, setEvents] = useState<AlertEventRow[]>([]);
+  const [emergencies, setEmergencies] = useState<EmergencyEventRow[]>([]);
   const [eventsError, setEventsError] = useState<string | null>(null);
+  const [emergenciesError, setEmergenciesError] = useState<string | null>(null);
 
   const loadCompanies = useCallback(async () => {
     const res = await apiFetch("/companies");
@@ -73,13 +95,22 @@ export default function ReportsPage() {
   }, []);
 
   const loadEvents = useCallback(async () => {
-    const res = await apiFetch("/alert-events?limit=500");
-    if (!res.ok) {
+    const [alertRes, emergencyRes] = await Promise.all([
+      apiFetch("/alert-events?limit=500"),
+      apiFetch("/emergencies?limit=500"),
+    ]);
+    if (alertRes.ok) {
+      setEventsError(null);
+      setEvents(await alertRes.json());
+    } else {
       setEventsError(t("reports.loadError"));
-      return;
     }
-    setEventsError(null);
-    setEvents(await res.json());
+    if (emergencyRes.ok) {
+      setEmergenciesError(null);
+      setEmergencies(await emergencyRes.json());
+    } else {
+      setEmergenciesError(t("reports.emergencyLoadError"));
+    }
   }, [t]);
 
   useEffect(() => {
@@ -172,6 +203,45 @@ export default function ReportsPage() {
               </button>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section style={{ marginTop: 28 }}>
+        <h2 style={{ margin: 0, fontSize: 16 }}>{t("reports.emergencyHistory")}</h2>
+        <p style={{ color: "#64748b", fontSize: 13 }}>
+          {t("reports.emergencyHistoryHint")}
+        </p>
+        {emergenciesError && <p style={{ color: "#f87171" }}>{emergenciesError}</p>}
+        <div style={{ overflowX: "auto", marginTop: 12, border: "1px solid #7f1d1d", borderRadius: 10 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
+            <thead>
+              <tr>
+                <th style={th}>{t("reports.colTime")}</th>
+                <th style={th}>{t("reports.colDevice")}</th>
+                <th style={th}>{t("reports.colStatus")}</th>
+                <th style={th}>Temp</th>
+                <th style={th}>CO2</th>
+                <th style={th}>{t("reports.colTelegram")}</th>
+                <th style={th}>{t("reports.colAck")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {emergencies.map((e) => (
+                <tr key={e.id}>
+                  <td style={td}>{new Date(e.started_at).toLocaleString()}</td>
+                  <td style={td}>{e.device_id || e.key}</td>
+                  <td style={{ ...td, color: e.status === "cleared" ? "#4ade80" : "#f87171", fontWeight: 700 }}>{e.status}</td>
+                  <td style={td}>{e.temperature} (+{e.temperature_rate}/min)</td>
+                  <td style={td}>{e.co2} (+{e.co2_rate}/min)</td>
+                  <td style={td}>{e.telegram_sent ? t("common.yes") : t("common.no")}</td>
+                  <td style={td}>{e.acknowledged_at ? new Date(e.acknowledged_at).toLocaleString() : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {emergencies.length === 0 && !emergenciesError && (
+            <div style={{ padding: 24, color: "#475569", fontSize: 14 }}>{t("reports.noEmergencyEvents")}</div>
+          )}
         </div>
       </section>
 

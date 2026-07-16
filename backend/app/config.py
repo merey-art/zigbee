@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     # Optional: BotFather token; alerts and /me/telegram/test require this.
     telegram_bot_token: str = ""
 
+    emergency_temp_rate: float = 2.0
+    emergency_co2_rate: float = 200.0
+    emergency_temp_absolute: float = 35.0
+    emergency_sustained_readings: int = 2
+    emergency_device_pairs: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",")]

@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 import aiomqtt
 
 from app.alert_notifier import notify_metric_alerts
+from app.emergency_detector import detector, handle_detection_result
 from app.bridge_devices_store import canonical_device_id, set_devices_from_bridge
 from app.config import settings
 from app.database import AsyncSessionLocal
@@ -30,6 +31,22 @@ SKIP_SUFFIXES: tuple[str, ...] = (
     "/get",
     "/set",
 )
+
+
+def _evaluate_emergency_results(
+    device_id: str,
+    values: dict[str, float],
+    now: datetime,
+) -> list:
+    """Run emergency detector rules and schedule handle_detection_result tasks."""
+    emergency_results = []
+    direct = detector.evaluate_device_payload(device_id, values, now)
+    if direct is not None:
+        emergency_results.append(direct)
+    emergency_results.extend(detector.evaluate_pairs(device_id, values, now))
+    for result in emergency_results:
+        asyncio.create_task(handle_detection_result(result))
+    return emergency_results
 
 
 def _topic_rest(topic: str, base: str) -> str:
@@ -67,6 +84,8 @@ async def _persist_readings(device_id: str, payload: dict) -> None:
         await session.commit()
     for metric, value in committed:
         asyncio.create_task(notify_metric_alerts(device_id, metric, value))
+    values = {metric: value for metric, value in committed}
+    _evaluate_emergency_results(device_id, values, now)
 
 
 async def run_mqtt_listener() -> None:

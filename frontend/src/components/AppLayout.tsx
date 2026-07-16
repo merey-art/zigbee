@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import { WsProvider, useDashboardWs, isSensorMessage } from "../context/WsContext";
+import { EmergencyBanner } from "./EmergencyBanner";
 import { apiFetch } from "../api/client";
 import i18n from "../i18n";
 import type { SensorMessage } from "../hooks/useWebSocket";
@@ -243,6 +244,7 @@ export function AppLayout() {
 
   return (
     <WsProvider>
+      <EmergencyBanner />
       <div style={{
         minHeight: "100vh",
         background: "#0b1220",
