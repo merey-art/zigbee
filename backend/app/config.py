@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     forecast_threshold_temperature: float = 30.0
     forecast_threshold_humidity: float = 70.0
 
+    # Optional: Google Gemini API key; AI features degrade to plain text without it.
+    gemini_api_key: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",")]

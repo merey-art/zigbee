@@ -7,10 +7,20 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
+from app.config import settings
+
 FORECAST_MAX_READINGS = 30
 FORECAST_MIN_READINGS = 5
 FORECAST_POINTS = 6
 FLAT_SLOPE_EPS = 1e-9
+
+
+def default_threshold(metric: str) -> float | None:
+    return {
+        "co2": settings.forecast_threshold_co2,
+        "temperature": settings.forecast_threshold_temperature,
+        "humidity": settings.forecast_threshold_humidity,
+    }.get(metric)
 
 
 @dataclass

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 import aiomqtt
 
+from app.ai.recommendations import maybe_send_ai_recommendation
 from app.alert_notifier import notify_metric_alerts
 from app.emergency_detector import detector, handle_detection_result
 from app.bridge_devices_store import canonical_device_id, set_devices_from_bridge
@@ -84,6 +85,7 @@ async def _persist_readings(device_id: str, payload: dict) -> None:
         await session.commit()
     for metric, value in committed:
         asyncio.create_task(notify_metric_alerts(device_id, metric, value))
+        asyncio.create_task(maybe_send_ai_recommendation(device_id, metric, value))
     values = {metric: value for metric, value in committed}
     _evaluate_emergency_results(device_id, values, now)
 

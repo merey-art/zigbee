@@ -19,9 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth_deps import get_current_user
 from app.bridge_devices_store import aliases_for_readings, canonical_device_id, display_label_for_canonical
-from app.config import settings
 from app.database import get_db
-from app.forecast import FORECAST_MAX_READINGS, compute_forecast
+from app.forecast import FORECAST_MAX_READINGS, compute_forecast, default_threshold
 from app.models import Company, DeviceCompany, SensorReading, User
 
 router = APIRouter()
@@ -267,14 +266,6 @@ async def get_history(
 # ── Forecast ───────────────────────────────────────────────────────────────────
 
 
-def _forecast_default_threshold(metric: str) -> float | None:
-    return {
-        "co2": settings.forecast_threshold_co2,
-        "temperature": settings.forecast_threshold_temperature,
-        "humidity": settings.forecast_threshold_humidity,
-    }.get(metric)
-
-
 @router.get("/devices/{device_id}/forecast", response_model=ForecastResponse)
 async def get_forecast(
     device_id: str,
@@ -303,7 +294,7 @@ async def get_forecast(
     ]
 
     if threshold is None:
-        threshold = _forecast_default_threshold(metric)
+        threshold = default_threshold(metric)
 
     result = compute_forecast(rows, horizon_min, threshold)
     if result is None:
