@@ -2,6 +2,32 @@
 
 import type { CSSProperties } from "react";
 
+// ── Staleness ────────────────────────────────────────────────────
+
+export type StaleTone = "fresh" | "stale" | "dead";
+
+/** Returns how stale the last reading is. */
+export function staleTone(recordedAt: string | null | undefined): StaleTone {
+  if (!recordedAt) return "dead";
+  const ageMs = Date.now() - new Date(recordedAt).getTime();
+  if (ageMs < 15 * 60 * 1000) return "fresh";
+  if (ageMs < 6 * 60 * 60 * 1000) return "stale";
+  return "dead";
+}
+
+/** Human-readable "X мин назад / Xч назад / Xд назад". */
+export function staleLabel(recordedAt: string | null | undefined): string | null {
+  if (!recordedAt) return null;
+  const ageMs = Date.now() - new Date(recordedAt).getTime();
+  const mins = Math.floor(ageMs / 60_000);
+  if (mins < 1) return null;
+  if (mins < 60) return `${mins} мин назад`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}ч назад`;
+  const days = Math.floor(hrs / 24);
+  return `${days}д назад`;
+}
+
 export type HealthTone = "good" | "warn" | "bad";
 
 export function metricHealthTone(metric: string, value: number | null): HealthTone | null {

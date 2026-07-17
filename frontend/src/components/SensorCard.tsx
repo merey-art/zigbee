@@ -1,5 +1,5 @@
 import React from "react";
-import { healthCardStyle, metricHealthTone } from "../util/metricHealth";
+import { healthCardStyle, metricHealthTone, staleTone, staleLabel } from "../util/metricHealth";
 
 interface Props {
   label: string;
@@ -67,17 +67,23 @@ export const SensorCard: React.FC<Props> = ({
   metricId,
 }) => {
   const displayValue = value !== null ? value.toFixed(1) : "—";
-  const timeLabel = updatedAt
-    ? new Date(updatedAt).toLocaleTimeString()
-    : null;
-
   const tone = metricId ? metricHealthTone(metricId, value) : null;
+  const stale = staleTone(updatedAt);
+  const ageLabel = staleLabel(updatedAt);
+
+  const staleCardStyle: React.CSSProperties = stale === "dead"
+    ? { border: "1px solid #44403c", opacity: 0.7 }
+    : stale === "stale"
+    ? { border: "1px solid #a16207" }
+    : {};
+
   const cardSurface: React.CSSProperties = {
     ...CARD_STYLE,
-    ...healthCardStyle(tone),
+    ...(stale === "fresh" ? healthCardStyle(tone) : staleCardStyle),
   };
-  const valueColor =
-    tone === "bad" ? "#f87171" : tone === "warn" ? "#fbbf24" : tone === "good" ? "#86efac" : accent;
+  const valueColor = stale !== "fresh"
+    ? (stale === "dead" ? "#64748b" : "#fb923c")
+    : tone === "bad" ? "#f87171" : tone === "warn" ? "#fbbf24" : tone === "good" ? "#86efac" : accent;
 
   return (
     <div style={cardSurface}>
@@ -89,7 +95,14 @@ export const SensorCard: React.FC<Props> = ({
         <span style={VALUE_STYLE(valueColor)}>{displayValue}</span>
         <span style={UNIT_STYLE}>{unit}</span>
       </div>
-      {timeLabel && <span style={TIME_STYLE}>Updated {timeLabel}</span>}
+      {stale !== "fresh" && ageLabel && (
+        <span style={{ fontSize: 11, color: stale === "dead" ? "#64748b" : "#fb923c", marginTop: 2, fontWeight: 600 }}>
+          ⚠ {ageLabel}
+        </span>
+      )}
+      {stale === "fresh" && ageLabel && (
+        <span style={TIME_STYLE}>{ageLabel}</span>
+      )}
     </div>
   );
 };
