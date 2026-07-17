@@ -15,3 +15,5 @@ version: 5
 devices:
   '0xa4c13836a9308178':
     friendly_name: Rhythmus 1 этаж
+  '0xa4c1380fff57ffff':
+    friendly_name: Температура
