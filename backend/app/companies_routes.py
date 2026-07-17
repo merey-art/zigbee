@@ -22,6 +22,8 @@ class CompanyRow(BaseModel):
     name: str
     floor_id: int | None = None
     office_id: str | None = None
+    co2_device_id: str | None = None
+    temp_device_id: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -37,6 +39,8 @@ class CompanyPatch(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     floor_id: int | None = None
     office_id: str | None = None
+    co2_device_id: str | None = None
+    temp_device_id: str | None = None
 
 
 @router.get("", response_model=list[CompanyRow])
@@ -84,6 +88,8 @@ async def patch_company(
     row.name = name
     row.floor_id = body.floor_id
     row.office_id = body.office_id
+    row.co2_device_id = body.co2_device_id
+    row.temp_device_id = body.temp_device_id
     await db.commit()
     await db.refresh(row)
     return CompanyRow.model_validate(row)

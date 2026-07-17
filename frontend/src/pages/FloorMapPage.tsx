@@ -4,6 +4,7 @@ import { FLOORS, type Floor, type Office } from "../data/floors";
 import { apiFetch } from "../api/client";
 import { useDashboardWs, isSensorMessage } from "../context/WsContext";
 import type { SensorMessage } from "../hooks/useWebSocket";
+import { staleTone, staleLabel } from "../util/metricHealth";
 
 // ── Design tokens ────────────────────────────────────────────────
 const C = {
@@ -28,6 +29,8 @@ interface CompanyRow {
   name: string;
   floor_id: number | null;
   office_id: string | null;
+  co2_device_id: string | null;
+  temp_device_id: string | null;
 }
 
 interface DeviceInfo {
@@ -116,9 +119,11 @@ function saveHidden(s: Set<string>) {
   localStorage.setItem(LS_KEY, JSON.stringify([...s]));
 }
 
-function FloorSVG({ floor, companies, selectedId, hoverId, query, editMode, hiddenIds, onSelect, onHover, onHide }:{
+function FloorSVG({ floor, companies, devices, liveReadings, selectedId, hoverId, query, editMode, hiddenIds, onSelect, onHover, onHide }:{
   floor: Floor;
   companies: CompanyRow[];
+  devices: DeviceInfo[];
+  liveReadings: Record<string,{values:Record<string,number>;receivedAt:string}>;
   selectedId: string|null;
   hoverId: string|null;
   query: string;
@@ -138,6 +143,38 @@ function FloorSVG({ floor, companies, selectedId, hoverId, query, editMode, hidd
     for(const c of companies) if(c.office_id) m.set(c.office_id,c);
     return m;
   },[companies]);
+
+  // Map company_id → aggregated metrics
+  const companyMetrics = useMemo(()=>{
+    const m=new Map<number,{co2:number|null;temp:number|null;hum:number|null;lastSeen:string|null}>();
+    const byCompany=new Map<number,DeviceInfo[]>();
+    for(const d of devices){
+      if(d.company_id==null) continue;
+      if(!byCompany.has(d.company_id)) byCompany.set(d.company_id,[]);
+      byCompany.get(d.company_id)!.push(d);
+    }
+    for(const [cid,devs] of byCompany){
+      const company=companies.find(c=>c.id===cid);
+      const getVal=(d:DeviceInfo,k:string)=>liveReadings[d.device_id]?.values?.[k]??d.latest_values?.[k]??null;
+      const avg=(vals:(number|null)[])=>{const f=vals.filter((v):v is number=>v!==null);return f.length?f.reduce((a,b)=>a+b,0)/f.length:null;};
+      const isCo2=(d:DeviceInfo)=>d.metrics?.includes("co2")||d.latest_values?.co2!=null||liveReadings[d.device_id]?.values?.co2!=null;
+      const autoNonCo2=devs.filter(d=>!isCo2(d));
+      const co2Devs=company?.co2_device_id?devs.filter(d=>d.device_id===company.co2_device_id):devs.filter(isCo2);
+      const tempDevs=company?.temp_device_id?devs.filter(d=>d.device_id===company.temp_device_id):(autoNonCo2.length>0?autoNonCo2:devs);
+      // Use actual WS arrival time; fall back to DB timestamp
+      const liveTimes=devs.map(d=>liveReadings[d.device_id]?.receivedAt??null);
+      const dbTimes=devs.map(d=>d.latest_recorded_at??null);
+      const allTimes=[...liveTimes,...dbTimes].filter((t):t is string=>t!=null);
+      const lastSeen=allTimes.length?allTimes.reduce((a,b)=>a>b?a:b):null;
+      m.set(cid,{
+        co2: (v=>v!=null?Math.round(v):null)(avg(co2Devs.map(d=>getVal(d,"co2")))),
+        temp: avg(tempDevs.map(d=>getVal(d,"temperature"))),
+        hum: (v=>v!=null?Math.round(v):null)(avg(tempDevs.map(d=>getVal(d,"humidity")))),
+        lastSeen,
+      });
+    }
+    return m;
+  },[devices,liveReadings]);
 
   const matches=useMemo(()=>{
     if(!q) return null;
@@ -177,6 +214,10 @@ function FloorSVG({ floor, companies, selectedId, hoverId, query, editMode, hidd
           const isHidden=hiddenIds.has(o.id);
           const dim=matches!==null&&!matches.has(o.id);
 
+          const metrics=company?companyMetrics.get(company.id):null;
+          const stale=metrics?staleTone(metrics.lastSeen):"fresh";
+          const staleAge=metrics?staleLabel(metrics.lastSeen):null;
+
           const fillColor = isHidden
             ? `${C.danger}08`
             : isSelected ? `${C.accent}22`
@@ -186,6 +227,8 @@ function FloorSVG({ floor, companies, selectedId, hoverId, query, editMode, hidd
             ? `${C.danger}40`
             : isSelected ? C.accent
             : isHover ? C.muted
+            : company && stale === "dead" ? `${C.dim}66`
+            : company && stale === "stale" ? `${C.orange}88`
             : company ? `${C.accent}55`
             : C.border;
 
@@ -201,14 +244,53 @@ function FloorSVG({ floor, companies, selectedId, hoverId, query, editMode, hidd
                 strokeDasharray={isHidden?"5 4":undefined}
                 style={{transition:"fill 150ms,stroke 150ms"}}/>
               {!dim&&!isHidden&&<FurnitureGrid x={x} y={y} w={w} h={h}/>}
-              {/* Company label */}
-              {!isHidden&&company&&w>70&&h>30&&(
-                <text x={x+w/2} y={y+h/2+1} textAnchor="middle" dominantBaseline="middle"
-                  fontSize={Math.min(11,w/8)} fill={C.muted} fontWeight="600"
-                  style={{pointerEvents:"none",userSelect:"none"}}>
-                  {company.name.length>18?company.name.slice(0,16)+"…":company.name}
-                </text>
-              )}
+              {/* Company label + metrics */}
+              {!isHidden&&company&&w>70&&h>30&&(()=>{
+                const hasMetrics=metrics&&(metrics.co2!=null||metrics.temp!=null||metrics.hum!=null);
+                const labelFs=Math.min(11,w/8);
+                const metricFs=Math.min(9.5,w/10);
+
+                const tempColor=(t:number)=>t<16?"#60a5fa":t<19?"#93c5fd":t<=25?C.ok:t<=28?C.warn:C.danger;
+                const humColor=(h:number)=>h<30?C.warn:h<=60?C.ok:h<=70?C.warn:C.danger;
+                const co2Color=(v:number)=>v>1000?C.danger:v>800?C.warn:C.ok;
+
+                const metricItems:{text:string;color:string}[]=[];
+                if(metrics?.temp!=null) metricItems.push({text:`${metrics.temp.toFixed(1)}°C`,color:tempColor(metrics.temp)});
+                if(metrics?.hum!=null) metricItems.push({text:`${metrics.hum}%`,color:humColor(metrics.hum)});
+                if(metrics?.co2!=null) metricItems.push({text:`CO₂ ${metrics.co2}`,color:co2Color(metrics.co2)});
+
+                const hasStaleWarning=stale!=="fresh"&&staleAge!=null&&h>55;
+                const rows=metricItems.length+(hasStaleWarning?1:0);
+                const step=13;
+                const totalH=rows*step;
+                const labelY=hasMetrics&&h>55?y+h/2-(totalH/2)-2:y+h/2+1;
+                const metricOpacity=stale==="dead"?0.45:stale==="stale"?0.7:1;
+
+                return (
+                  <g style={{pointerEvents:"none",userSelect:"none"}}>
+                    <text x={x+w/2} y={labelY} textAnchor="middle" dominantBaseline="middle"
+                      fontSize={labelFs} fill={stale==="dead"?C.dim:C.muted} fontWeight="600">
+                      {company.name.length>18?company.name.slice(0,16)+"…":company.name}
+                    </text>
+                    {hasMetrics&&h>55&&(
+                      <g opacity={metricOpacity}>
+                        {metricItems.map((item,i)=>(
+                          <text key={i} x={x+w/2} y={labelY+12+(i*step)} textAnchor="middle" dominantBaseline="middle"
+                            fontSize={metricFs} fill={item.color} fontWeight="700">
+                            {item.text}
+                          </text>
+                        ))}
+                      </g>
+                    )}
+                    {hasStaleWarning&&(
+                      <text x={x+w/2} y={labelY+12+(metricItems.length*step)} textAnchor="middle" dominantBaseline="middle"
+                        fontSize={Math.min(8.5,w/11)} fill={stale==="dead"?C.dim:C.orange} fontWeight="700">
+                        {`⚠ ${staleAge}`}
+                      </text>
+                    )}
+                  </g>
+                );
+              })()}
               {/* Edit mode: delete / restore button */}
               {editMode && isHover && w > 32 && h > 24 && (
                 <g onClick={e=>{e.stopPropagation(); onHide(o.id);}} style={{cursor:"pointer"}}>
@@ -245,18 +327,27 @@ function OfficeDetail({ office, floor, company, devices, liveReadings, onClose }
   floor: Floor;
   company: CompanyRow|null;
   devices: DeviceInfo[];
-  liveReadings: Record<string,Record<string,number>>;
+  liveReadings: Record<string,{values:Record<string,number>;receivedAt:string}>;
   onClose:()=>void;
 }) {
   const { t } = useTranslation();
   if(!office) return null;
 
   const getVal=(d:DeviceInfo, metric:string)=>{
-    const live=liveReadings[d.device_id]?.[metric];
+    const live=liveReadings[d.device_id]?.values?.[metric];
     return live??d.latest_values?.[metric]??null;
   };
 
   const officeDevices=devices.filter(d=>d.company_id===company?.id);
+
+  // Use actual WS arrival time; fall back to DB timestamp
+  const lastSeenStr=officeDevices.reduce<string|null>((best,d)=>{
+    const t=liveReadings[d.device_id]?.receivedAt??d.latest_recorded_at??null;
+    if(!t) return best;
+    return !best||t>best?t:best;
+  },null);
+  const stale=staleTone(lastSeenStr);
+  const ageLabel=staleLabel(lastSeenStr);
   const co2Vals=officeDevices.map(d=>getVal(d,"co2")).filter((v):v is number=>v!==null);
   const tempVals=officeDevices.map(d=>getVal(d,"temperature")).filter((v):v is number=>v!==null);
   const humVals=officeDevices.map(d=>getVal(d,"humidity")).filter((v):v is number=>v!==null);
@@ -296,6 +387,22 @@ function OfficeDetail({ office, floor, company, devices, liveReadings, onClose }
             ? <div style={{fontSize:13,color:C.accent,marginTop:4,fontWeight:600}}>🏢 {company.name}</div>
             : <div style={{fontSize:13,color:C.dim,marginTop:4}}>{t("floorMap.detail.noCompany")}</div>
           }
+          {stale!=="fresh"&&ageLabel&&officeDevices.length>0&&(
+            <div style={{
+              marginTop:12,padding:"8px 12px",borderRadius:8,
+              background:stale==="dead"?"#1c1917":"#1c1200",
+              border:`1px solid ${stale==="dead"?C.dim+"44":C.orange+"55"}`,
+              display:"flex",alignItems:"center",gap:8,
+            }}>
+              <span style={{fontSize:15}}>{stale==="dead"?"📴":"⚠️"}</span>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:stale==="dead"?C.dim:C.orange}}>
+                  {stale==="dead"?"Устройство не в сети":"Данные устарели"}
+                </div>
+                <div style={{fontSize:11,color:C.dim,marginTop:1}}>Последние данные: {ageLabel}</div>
+              </div>
+            </div>
+          )}
 
           {/* Sensor readings */}
           {officeDevices.length>0?(
@@ -382,7 +489,8 @@ export default function FloorMapPage() {
 
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
-  const [liveReadings, setLiveReadings] = useState<Record<string,Record<string,number>>>({});
+  // Stores {values, receivedAt} per device — receivedAt is the actual WS arrival time
+  const [liveReadings, setLiveReadings] = useState<Record<string,{values:Record<string,number>;receivedAt:string}>>({});
   const [editMode, setEditMode] = useState(false);
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(loadHidden);;
 
@@ -398,11 +506,17 @@ export default function FloorMapPage() {
     return ()=>{cancelled=true;};
   },[]);
 
-  // Live WS
+  // Live WS — store values AND the real arrival timestamp
   useEffect(()=>subscribeMessages(raw=>{
     if(!isSensorMessage(raw)) return;
     const msg=raw as SensorMessage;
-    setLiveReadings(prev=>({...prev,[msg.device_id]:{...(prev[msg.device_id]??{}),...msg.data}}));
+    setLiveReadings(prev=>({
+      ...prev,
+      [msg.device_id]:{
+        values:{...(prev[msg.device_id]?.values??{}),...msg.data},
+        receivedAt: new Date().toISOString(),
+      },
+    }));
   }),[subscribeMessages]);
 
   useEffect(()=>{setSelectedId(null);},[floorId]);
@@ -446,7 +560,7 @@ export default function FloorMapPage() {
       return co?.floor_id===floorId;
     });
     const co2Vals=allFloorDevices.map(d=>{
-      const live=liveReadings[d.device_id]?.co2;
+      const live=liveReadings[d.device_id]?.values?.co2;
       return live??d.latest_values?.co2??null;
     }).filter((v):v is number=>v!==null);
     const avgCo2=co2Vals.length?Math.round(co2Vals.reduce((a,b)=>a+b,0)/co2Vals.length):null;
@@ -567,6 +681,8 @@ export default function FloorMapPage() {
         <FloorSVG
           floor={floor}
           companies={floorCompanies}
+          devices={devices}
+          liveReadings={liveReadings}
           selectedId={selectedId}
           hoverId={hoverId}
           query={query}

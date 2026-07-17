@@ -24,7 +24,16 @@ interface CompanyRow {
   name: string;
   floor_id: number | null;
   office_id: string | null;
+  co2_device_id: string | null;
+  temp_device_id: string | null;
   created_at: string;
+}
+
+interface DeviceInfo {
+  device_id: string;
+  friendly_name: string | null;
+  company_id: number | null;
+  metrics: string[];
 }
 
 // ── Mini SVG floor picker ─────────────────────────────────────────
@@ -121,17 +130,20 @@ interface FormState {
   name: string;
   floorId: number | null;
   officeId: string | null;
-  pickingOnMap: boolean; // kept for compat but unused now
+  co2DeviceId: string | null;
+  tempDeviceId: string | null;
+  pickingOnMap: boolean;
 }
 
-const emptyForm = (): FormState => ({ name: "", floorId: 1, officeId: null, pickingOnMap: false });
+const emptyForm = (): FormState => ({ name: "", floorId: 1, officeId: null, co2DeviceId: null, tempDeviceId: null, pickingOnMap: false });
 
 // ── Company modal ─────────────────────────────────────────────────
-function CompanyModal({ title, form, setForm, takenOfficeIds, onCancel, onSubmit }: {
+function CompanyModal({ title, form, setForm, takenOfficeIds, companyDevices, onCancel, onSubmit }: {
   title: string;
   form: FormState;
   setForm: (updater: FormState | ((prev: FormState) => FormState)) => void;
   takenOfficeIds: Set<string>;
+  companyDevices: DeviceInfo[];
   onCancel: () => void;
   onSubmit: () => void;
 }) {
@@ -225,6 +237,38 @@ function CompanyModal({ title, form, setForm, takenOfficeIds, onCancel, onSubmit
           />
         </div>
 
+        {/* Device roles — only shown when devices are assigned */}
+        {companyDevices.length > 0 && (
+          <div style={{ marginTop: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <label style={{ ...lbl, flex: "1 1 200px" }}>
+              🌿 CO₂ устройство
+              <select style={{ ...inp, marginTop: 6 }}
+                value={form.co2DeviceId ?? ""}
+                onChange={e => setForm(f => ({ ...f, co2DeviceId: e.target.value || null }))}>
+                <option value="">— авто</option>
+                {companyDevices.map(d => (
+                  <option key={d.device_id} value={d.device_id}>
+                    {d.friendly_name || d.device_id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ ...lbl, flex: "1 1 200px" }}>
+              🌡️ Температура / влажность
+              <select style={{ ...inp, marginTop: 6 }}
+                value={form.tempDeviceId ?? ""}
+                onChange={e => setForm(f => ({ ...f, tempDeviceId: e.target.value || null }))}>
+                <option value="">— авто</option>
+                {companyDevices.map(d => (
+                  <option key={d.device_id} value={d.device_id}>
+                    {d.friendly_name || d.device_id}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
           <button type="button" style={btnGhost} onClick={onCancel}>{t("common.cancel")}</button>
           <button type="button" style={btnPrimary} onClick={onSubmit} disabled={!form.name.trim()}>
@@ -240,6 +284,7 @@ function CompanyModal({ title, form, setForm, takenOfficeIds, onCancel, onSubmit
 export default function CompaniesPage() {
   const { t } = useTranslation();
   const [rows, setRows] = useState<CompanyRow[]>([]);
+  const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [addForm, setAddForm] = useState<FormState | null>(null);
@@ -250,10 +295,11 @@ export default function CompaniesPage() {
   const [filterFloor, setFilterFloor] = useState<number | "all">("all");
 
   const refresh = useCallback(async () => {
-    const res = await apiFetch("/companies");
-    if (!res.ok) { setLoadError(t("companies.loadError")); return; }
+    const [cr, dr] = await Promise.all([apiFetch("/companies"), apiFetch("/devices")]);
+    if (!cr.ok) { setLoadError(t("companies.loadError")); return; }
     setLoadError(null);
-    setRows(await res.json());
+    setRows(await cr.json());
+    if (dr.ok) setDevices(await dr.json());
   }, [t]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -296,7 +342,13 @@ export default function CompaniesPage() {
     const res = await apiFetch(`/companies/${editForm.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editForm.form.name.trim(), floor_id: editForm.form.floorId, office_id: editForm.form.officeId }),
+      body: JSON.stringify({
+        name: editForm.form.name.trim(),
+        floor_id: editForm.form.floorId,
+        office_id: editForm.form.officeId,
+        co2_device_id: editForm.form.co2DeviceId,
+        temp_device_id: editForm.form.tempDeviceId,
+      }),
     });
     if (!res.ok) { alert(t("common.error")); return; }
     setEditForm(null);
@@ -403,7 +455,7 @@ export default function CompaniesPage() {
                 <td style={{ ...td, textAlign: "right" }}>
                   <button type="button" style={btnGhost} onClick={() => setEditForm({
                     id: c.id,
-                    form: { name: c.name, floorId: c.floor_id, officeId: c.office_id, pickingOnMap: false },
+                    form: { name: c.name, floorId: c.floor_id, officeId: c.office_id, co2DeviceId: c.co2_device_id, tempDeviceId: c.temp_device_id, pickingOnMap: false },
                   })}>{t("common.edit")}</button>
                   <button type="button" style={{ ...btnGhost, marginLeft: 6, color: C.danger, borderColor: `${C.danger}44` }}
                     onClick={() => setDeleteId(c.id)}>{t("common.delete")}</button>
@@ -421,6 +473,7 @@ export default function CompaniesPage() {
           form={addForm}
           setForm={f => setAddForm(prev => prev === null ? null : typeof f === "function" ? f(prev) : f)}
           takenOfficeIds={takenOfficeIds}
+          companyDevices={[]}
           onCancel={() => setAddForm(null)}
           onSubmit={submitAdd}
         />
@@ -437,6 +490,7 @@ export default function CompaniesPage() {
             return { ...prev, form: nextForm };
           })}
           takenOfficeIds={takenExcludingEdit}
+          companyDevices={devices.filter(d => d.company_id === editForm.id)}
           onCancel={() => setEditForm(null)}
           onSubmit={submitEdit}
         />

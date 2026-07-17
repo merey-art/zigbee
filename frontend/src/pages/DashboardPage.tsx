@@ -5,6 +5,13 @@ import { useDashboardWs, isSensorMessage } from "../context/WsContext";
 import { FLOORS } from "../data/floors";
 import type { SensorMessage } from "../hooks/useWebSocket";
 import { SensorChart } from "../components/SensorChart";
+import { staleTone, staleLabel } from "../util/metricHealth";
+
+const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
+
+function isLiveOnline(updatedAt: string): boolean {
+  return Date.now() - new Date(updatedAt).getTime() < ONLINE_THRESHOLD_MS;
+}
 
 // ── Design tokens ────────────────────────────────────────────────
 const C = {
@@ -114,10 +121,12 @@ function MiniStat({ label, value, accent }: { label: string; value: React.ReactN
 }
 
 // ── Company card (floor-like health card) ────────────────────────
-function CompanyCard({ name, devices, liveReadings }: {
+function CompanyCard({ name, devices, liveReadings, co2DeviceId, tempDeviceId }: {
   name: string;
   devices: DeviceInfo[];
   liveReadings: Record<string, LiveReading>;
+  co2DeviceId: string | null;
+  tempDeviceId: string | null;
 }) {
   const { t } = useTranslation();
 
@@ -127,15 +136,17 @@ function CompanyCard({ name, devices, liveReadings }: {
     return d.latest_values?.[metric] ?? null;
   };
 
-  // Split devices by type: CO2 devices vs temperature devices
-  // A device is a "CO2 device" if it reports CO2 (live or latest).
-  // Temperature/humidity are taken only from non-CO2 devices to avoid mixing.
-  const co2Devices = devices.filter(d =>
-    (liveReadings[d.device_id]?.data["co2"] !== undefined) ||
-    (d.latest_values?.["co2"] !== undefined) ||
-    d.metrics?.includes("co2")
-  );
-  const tempDevices = devices.filter(d => !co2Devices.includes(d));
+  // If explicit device roles are set — use them; otherwise fall back to auto-detection
+  const co2Devices = co2DeviceId
+    ? devices.filter(d => d.device_id === co2DeviceId)
+    : devices.filter(d =>
+        (liveReadings[d.device_id]?.data["co2"] !== undefined) ||
+        (d.latest_values?.["co2"] !== undefined) ||
+        d.metrics?.includes("co2")
+      );
+  const tempDevices = tempDeviceId
+    ? devices.filter(d => d.device_id === tempDeviceId)
+    : devices.filter(d => !co2Devices.includes(d));
 
   const co2Vals = co2Devices
     .map(d => getValue(d, "co2"))
@@ -157,22 +168,44 @@ function CompanyCard({ name, devices, liveReadings }: {
 
   const online = devices.filter(d => {
     const r = liveReadings[d.device_id];
-    if (r) return true;
+    if (r) return isLiveOnline(r.updatedAt);
     const updated = d.latest_recorded_at;
     if (!updated) return false;
-    const minsAgo = (Date.now() - new Date(updated).getTime()) / 60000;
-    return minsAgo < 30;
+    return Date.now() - new Date(updated).getTime() < ONLINE_THRESHOLD_MS;
   }).length;
 
+  // Staleness: best (most recent) timestamp across all devices
+  const bestTs = devices.reduce<string | null>((best, d) => {
+    const t = liveReadings[d.device_id]?.updatedAt ?? d.latest_recorded_at ?? null;
+    if (!t) return best;
+    return !best || t > best ? t : best;
+  }, null);
+  const stale = staleTone(bestTs);
+  const ageLabel = staleLabel(bestTs);
+
   return (
-    <Card hoverable padding={16} style={{ cursor: "default" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+    <Card hoverable padding={16} style={{
+      cursor: "default",
+      ...(stale === "dead" ? { borderColor: `${C.dim}44`, opacity: 0.75 } :
+          stale === "stale" ? { borderColor: `${C.orange}66` } : {}),
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: stale !== "fresh" ? 8 : 14 }}>
         <div>
           <div style={{ fontSize: 11, color: C.dim, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em" }}>
             Office
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginTop: 2 }}>{name}</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: stale === "dead" ? C.dim : C.text, marginTop: 2 }}>{name}</div>
         </div>
+        {stale !== "fresh" && (
+          <div style={{
+            fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+            background: stale === "dead" ? "#1c1917" : "#1c1200",
+            color: stale === "dead" ? C.dim : C.orange,
+            border: `1px solid ${stale === "dead" ? C.dim + "33" : C.orange + "44"}`,
+          }}>
+            {stale === "dead" ? "📴" : "⚠️"} {ageLabel}
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 14, marginBottom: avgCo2 !== null ? 14 : 0 }}>
@@ -444,7 +477,7 @@ function WsStatusBadge({ status }: { status: string }) {
 }
 
 // ── Types ─────────────────────────────────────────────────────────
-interface CompanyRow { id: number; name: string; floor_id: number | null; office_id: string | null; }
+interface CompanyRow { id: number; name: string; floor_id: number | null; office_id: string | null; co2_device_id: string | null; temp_device_id: string | null; }
 
 // ── Page ─────────────────────────────────────────────────────────
 export default function DashboardPage() {
@@ -513,10 +546,11 @@ export default function DashboardPage() {
   const stats = useMemo(() => {
     const totalDevices = knownDevices.length;
     const onlineCount = knownDevices.filter(d => {
-      if (liveReadings[d.device_id]) return true;
+      const live = liveReadings[d.device_id];
+      if (live) return isLiveOnline(live.updatedAt);
       const updated = d.latest_recorded_at;
       if (!updated) return false;
-      return (Date.now() - new Date(updated).getTime()) / 60000 < 30;
+      return Date.now() - new Date(updated).getTime() < ONLINE_THRESHOLD_MS;
     }).length;
 
     const getVal = (d: DeviceInfo, metric: string) => {
@@ -524,13 +558,38 @@ export default function DashboardPage() {
       return live ?? d.latest_values?.[metric] ?? null;
     };
 
-    const temps = knownDevices.map(d => getVal(d, "temperature")).filter((v): v is number => v !== null);
-    const hums = knownDevices.map(d => getVal(d, "humidity")).filter((v): v is number => v !== null);
-    const co2s = knownDevices.map(d => getVal(d, "co2")).filter((v): v is number => v !== null);
+    const isCo2Device = (d: DeviceInfo) =>
+      d.metrics?.includes("co2") || d.latest_values?.["co2"] != null || liveReadings[d.device_id]?.data["co2"] != null;
+
+    // Per company: resolve which device is used for temp and which for co2
+    const tempDeviceIds = new Set<string>();
+    const co2DeviceIds = new Set<string>();
+    for (const c of companies) {
+      const cDevs = knownDevices.filter(d => d.company_id === c.id);
+      if (c.temp_device_id) {
+        tempDeviceIds.add(c.temp_device_id);
+      } else {
+        // auto: non-CO2 devices; if none, use all
+        const nonCo2 = cDevs.filter(d => !isCo2Device(d));
+        (nonCo2.length > 0 ? nonCo2 : cDevs).forEach(d => tempDeviceIds.add(d.device_id));
+      }
+      if (c.co2_device_id) {
+        co2DeviceIds.add(c.co2_device_id);
+      } else {
+        cDevs.filter(isCo2Device).forEach(d => co2DeviceIds.add(d.device_id));
+      }
+    }
+
+    const tempDevices = knownDevices.filter(d => tempDeviceIds.has(d.device_id));
+    const co2Devices  = knownDevices.filter(d => co2DeviceIds.has(d.device_id));
+
+    const temps = tempDevices.map(d => getVal(d, "temperature")).filter((v): v is number => v !== null);
+    const hums  = tempDevices.map(d => getVal(d, "humidity")).filter((v): v is number => v !== null);
+    const co2s  = co2Devices.map(d => getVal(d, "co2")).filter((v): v is number => v !== null);
 
     const avgTemp = temps.length ? +(temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : null;
-    const avgHum = hums.length ? Math.round(hums.reduce((a, b) => a + b, 0) / hums.length) : null;
-    const avgCo2 = co2s.length ? Math.round(co2s.reduce((a, b) => a + b, 0) / co2s.length) : null;
+    const avgHum  = hums.length  ? Math.round(hums.reduce((a, b) => a + b, 0) / hums.length)     : null;
+    const avgCo2  = co2s.length  ? Math.round(co2s.reduce((a, b) => a + b, 0) / co2s.length)     : null;
 
     return {
       totalDevices, onlineCount,
@@ -742,7 +801,7 @@ export default function DashboardPage() {
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
                 {(filteredCompanies.length > 0 ? filteredCompanies : companiesWithDevices).map(c => (
-                  <CompanyCard key={c.id} name={c.name} devices={c.devices} liveReadings={liveReadings} />
+                  <CompanyCard key={c.id} name={c.name} devices={c.devices} liveReadings={liveReadings} co2DeviceId={c.co2_device_id ?? null} tempDeviceId={c.temp_device_id ?? null} />
                 ))}
               </div>
             )}
