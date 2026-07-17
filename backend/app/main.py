@@ -32,6 +32,7 @@ from app.database import AsyncSessionLocal, Base, engine
 from app.emergency_detector import hydrate_detector_state_from_db
 from app.models import HYPERTABLE_SQL, User
 from app.mqtt_listener import run_mqtt_listener
+from app.telegram_bot import run_telegram_bot
 from app.users_routes import router as users_router
 from app.websocket import manager
 
@@ -101,6 +102,9 @@ async def startup() -> None:
     # 5. Start MQTT listener
     asyncio.create_task(run_mqtt_listener())
     logger.info("MQTT listener task started.")
+
+    # 6. Start Telegram bot polling (no-op without TELEGRAM_BOT_TOKEN)
+    asyncio.create_task(run_telegram_bot())
 
 
 @app.on_event("shutdown")

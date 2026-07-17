@@ -41,6 +41,30 @@ interface EmergencyEventRow {
   cleared_at: string | null;
 }
 
+interface MetricAggregate {
+  device_id: string;
+  device_label: string;
+  metric: string;
+  unit: string;
+  min: number;
+  max: number;
+  avg: number;
+  latest: number | null;
+  count: number;
+  worst_hours: { hour: string; avg: number }[];
+}
+
+interface AiReport {
+  period: "day" | "week";
+  days_requested: number;
+  days_covered: number;
+  coverage_note: string | null;
+  total_readings: number;
+  aggregates: MetricAggregate[];
+  summary_text: string | null;
+  text_available: boolean;
+}
+
 async function downloadReport(pathWithQuery: string, fallbackName: string) {
   const res = await apiFetch(pathWithQuery);
   if (!res.ok) {
@@ -88,6 +112,45 @@ export default function ReportsPage() {
   const [emergencies, setEmergencies] = useState<EmergencyEventRow[]>([]);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [emergenciesError, setEmergenciesError] = useState<string | null>(null);
+
+  // AI report state
+  const [aiReport, setAiReport] = useState<AiReport | null>(null);
+  const [aiLoading, setAiLoading] = useState<"day" | "week" | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [tgSending, setTgSending] = useState(false);
+  const [tgNote, setTgNote] = useState<string | null>(null);
+
+  const generateAiReport = useCallback(async (period: "day" | "week") => {
+    setAiLoading(period);
+    setAiError(null);
+    setTgNote(null);
+    try {
+      const res = await apiFetch(`/reports/generate?period=${period}`, { method: "POST" });
+      if (!res.ok) {
+        setAiError(t("reports.ai.error"));
+        return;
+      }
+      setAiReport(await res.json());
+    } catch {
+      setAiError(t("reports.ai.error"));
+    } finally {
+      setAiLoading(null);
+    }
+  }, [t]);
+
+  const sendReportTelegram = useCallback(async () => {
+    if (!aiReport) return;
+    setTgSending(true);
+    setTgNote(null);
+    try {
+      const res = await apiFetch(`/reports/send-telegram?period=${aiReport.period}`, { method: "POST" });
+      setTgNote(res.ok ? t("reports.ai.tgSent") : t("reports.ai.tgError"));
+    } catch {
+      setTgNote(t("reports.ai.tgError"));
+    } finally {
+      setTgSending(false);
+    }
+  }, [aiReport, t]);
 
   const loadCompanies = useCallback(async () => {
     const res = await apiFetch("/companies");
@@ -153,6 +216,113 @@ export default function ReportsPage() {
       <p style={{ color: "#64748b", fontSize: 14, marginTop: 0 }}>
         {t("reports.subtitle")}
       </p>
+
+      <section
+        style={{
+          marginTop: 24,
+          padding: 22,
+          background: "#1e293b",
+          borderRadius: 12,
+          border: "1px solid #334155",
+        }}
+      >
+        <h2 style={{ margin: "0 0 4px", fontSize: 16 }}>{t("reports.ai.title")}</h2>
+        <p style={{ color: "#64748b", fontSize: 13, marginTop: 0 }}>{t("reports.ai.subtitle")}</p>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+          <button
+            type="button"
+            style={{ ...btnPrimary, opacity: aiLoading ? 0.7 : 1 }}
+            disabled={aiLoading !== null}
+            onClick={() => generateAiReport("day")}
+          >
+            {aiLoading === "day" ? t("reports.ai.generating") : t("reports.ai.dayBtn")}
+          </button>
+          <button
+            type="button"
+            style={{ ...btn, opacity: aiLoading ? 0.7 : 1 }}
+            disabled={aiLoading !== null}
+            onClick={() => generateAiReport("week")}
+          >
+            {aiLoading === "week" ? t("reports.ai.generating") : t("reports.ai.weekBtn")}
+          </button>
+        </div>
+
+        {aiError && <p style={{ color: "#f87171", fontSize: 13 }}>{aiError}</p>}
+
+        {aiLoading && (
+          <div style={{ color: "#94a3b8", fontSize: 13, padding: "8px 0" }}>
+            ⏳ {t("reports.ai.generatingHint")}
+          </div>
+        )}
+
+        {aiReport && !aiLoading && (
+          <div style={{ marginTop: 12 }}>
+            {aiReport.coverage_note && (
+              <div style={{
+                display: "inline-block", padding: "4px 10px", borderRadius: 8,
+                background: "#422006", color: "#fdba74", fontSize: 12, fontWeight: 600,
+                marginBottom: 12, border: "1px solid #7c2d12",
+              }}>
+                ⚠ {aiReport.coverage_note}
+              </div>
+            )}
+
+            <div style={{
+              background: "#0f172a", border: "1px solid #334155", borderRadius: 10,
+              padding: 16, whiteSpace: "pre-wrap", lineHeight: 1.55, fontSize: 14,
+              color: aiReport.text_available ? "#e2e8f0" : "#94a3b8",
+            }}>
+              {aiReport.text_available
+                ? aiReport.summary_text
+                : `⚠ ${t("reports.ai.textUnavailable")}`}
+            </div>
+
+            {aiReport.aggregates.length > 0 && (
+              <div style={{ overflowX: "auto", marginTop: 14, border: "1px solid #334155", borderRadius: 10 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>{t("reports.colDevice")}</th>
+                      <th style={th}>{t("reports.colMetric")}</th>
+                      <th style={th}>{t("reports.ai.min")}</th>
+                      <th style={th}>{t("reports.ai.max")}</th>
+                      <th style={th}>{t("reports.ai.avg")}</th>
+                      <th style={th}>{t("reports.ai.latest")}</th>
+                      <th style={th}>{t("reports.ai.count")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aiReport.aggregates.map((a) => (
+                      <tr key={a.device_id + a.metric}>
+                        <td style={td}>{a.device_label}</td>
+                        <td style={td}>{a.metric}</td>
+                        <td style={td}>{a.min} {a.unit}</td>
+                        <td style={td}>{a.max} {a.unit}</td>
+                        <td style={td}>{a.avg} {a.unit}</td>
+                        <td style={td}>{a.latest ?? "—"} {a.latest != null ? a.unit : ""}</td>
+                        <td style={td}>{a.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center" }}>
+              <button
+                type="button"
+                style={{ ...btn, opacity: tgSending ? 0.7 : 1 }}
+                disabled={tgSending}
+                onClick={() => sendReportTelegram()}
+              >
+                {tgSending ? t("reports.ai.tgSending") : t("reports.ai.tgBtn")}
+              </button>
+              {tgNote && <span style={{ fontSize: 13, color: "#94a3b8" }}>{tgNote}</span>}
+            </div>
+          </div>
+        )}
+      </section>
 
       <section
         style={{

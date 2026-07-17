@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     # Optional: Google Gemini API key; AI features degrade to plain text without it.
     gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.1-flash-lite"
 
     @property
     def cors_origins_list(self) -> list[str]:

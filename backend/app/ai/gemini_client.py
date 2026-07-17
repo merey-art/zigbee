@@ -20,11 +20,10 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-2.5-flash"
-API_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    f"{GEMINI_MODEL}:generateContent"
-)
+# Default model comes from settings (GEMINI_MODEL env); gemini-2.5-flash is
+# retired for new API keys, current default is gemini-3.1-flash-lite.
+API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+RETRYABLE_STATUSES = (429, 503)  # rate limit / temporary overload
 MAX_RETRIES = 3
 REQUEST_TIMEOUT = 30
 
@@ -79,12 +78,14 @@ async def generate(prompt: str, system: str | None = None) -> str | None:
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
 
+    model = (settings.gemini_model or "").strip() or "gemini-3.1-flash-lite"
+    url = f"{API_BASE}/{model}:generateContent"
     delay = 1.0
     for attempt in range(MAX_RETRIES + 1):
         try:
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
                 r = await client.post(
-                    API_URL,
+                    url,
                     params={"key": key},
                     json=body,
                 )
@@ -96,8 +97,10 @@ async def generate(prompt: str, system: str | None = None) -> str | None:
             delay *= 2
             continue
 
-        if r.status_code == 429:
-            logger.warning("Gemini rate-limited (429), attempt %d", attempt + 1)
+        if r.status_code in RETRYABLE_STATUSES:
+            logger.warning(
+                "Gemini transient error %d, attempt %d", r.status_code, attempt + 1
+            )
             if attempt >= MAX_RETRIES:
                 return None
             # Exponential backoff with jitter
